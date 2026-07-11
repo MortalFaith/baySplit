@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bay Split Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <section id="home-view" class="home-view">
+      <div class="home-hero">
+        <div class="brand home-brand">
+          <div class="brand__mark">BS</div>
+          <div>
+            <p class="eyebrow">Voyage workspace</p>
+            <h1>Bay Split</h1>
+          </div>
+        </div>
+
+        <div class="home-card">
+          <p class="eyebrow">上传入口</p>
+          <h2>导入新的航次箱单</h2>
+          <p class="muted">首页只保留上传入口和已导入航次。导入后可进入船只界面进行筛选、勾选贝位和分票。</p>
+          <form id="home-upload-form">
+            <label class="upload-field">
+              <span>选择 Excel 文件（.xls）</span>
+              <input id="home-file-input" type="file" accept=".xls" />
+            </label>
+            <button type="submit" class="button button--primary">导入航次</button>
+          </form>
+        </div>
+      </div>
+
+      <section class="home-list">
+        <div class="home-list__header">
+          <div>
+            <p class="section-title">已导入航次</p>
+            <p class="muted">点击任一航次进入对应船只的拆仓视图。</p>
+          </div>
+        </div>
+        <div id="voyage-list" class="voyage-grid"></div>
+      </section>
+    </section>
+
+    <section id="voyage-view" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand__mark">BS</div>
+          <div>
+            <p class="eyebrow">Voyage detail</p>
+            <h1 id="sidebar-title">Bay Split</h1>
+          </div>
+        </div>
+
+        <div class="sidebar__card">
+          <button id="back-home-button" type="button" class="button button--ghost button--full">返回首页</button>
+        </div>
+
+        <div class="sidebar__card">
+          <p class="section-title">筛选条件</p>
+          <div id="filter-panel" class="filter-panel"></div>
+          <button id="reset-filters" class="button button--ghost button--full">重置筛选</button>
+        </div>
+
+        <div class="sidebar__card">
+          <div class="ticket-header">
+            <p class="section-title">已分票清单</p>
+            <button id="create-ticket-button" type="button" class="button button--primary">增加分票</button>
+          </div>
+          <p class="muted">先在矩阵中勾选需要的 BAY，再生成新的分票 Excel。</p>
+          <div id="ticket-list" class="ticket-list"></div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <header class="hero">
+          <div>
+            <p class="eyebrow">舱位透视统计</p>
+            <h2 id="hero-title">等待载入数据</h2>
+            <p id="hero-subtitle" class="muted">
+              页面会展示按 BAY 展开的箱量矩阵、贝位预警标签与预估作业时长。
+            </p>
+          </div>
+          <div class="hero__actions">
+            <button id="sort-total-button" type="button" class="button button--ghost hero__button">
+              按总计排序：默认
+            </button>
+            <button id="settings-button" type="button" class="button button--ghost hero__button">
+              参数设置
+            </button>
+          </div>
+        </header>
+
+        <section id="summary-grid" class="summary-grid"></section>
+
+        <section class="panel">
+          <div class="panel__header">
+            <div>
+              <p class="section-title">透视矩阵</p>
+              <p class="muted">行维度为 BAY，列维度为 持箱人 / 尺寸 / 箱高。</p>
+            </div>
+            <div id="base-filter-tags" class="tag-group"></div>
+          </div>
+          <div class="table-shell">
+            <table id="pivot-table" class="pivot-table"></table>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <template id="voyage-card-template">
+      <button class="voyage-card" type="button">
+        <p class="eyebrow voyage-card__eyebrow"></p>
+        <h3 class="voyage-card__title"></h3>
+        <p class="voyage-card__meta"></p>
+      </button>
+    </template>
+
+    <template id="filter-group-template">
+      <section class="filter-group">
+        <div class="filter-group__header">
+          <h3></h3>
+          <label class="switch">
+            <input type="checkbox" class="filter-toggle" />
+            <span class="switch__track"></span>
+          </label>
+        </div>
+        <p class="filter-group__hint muted"></p>
+        <div class="filter-options"></div>
+      </section>
+    </template>
+
+    <template id="ticket-item-template">
+      <article class="ticket-item">
+        <div>
+          <p class="ticket-item__title"></p>
+          <p class="ticket-item__meta muted"></p>
+        </div>
+        <a class="button button--ghost ticket-item__link" target="_blank" rel="noreferrer">下载</a>
+      </article>
+    </template>
+
+    <div id="settings-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal__backdrop" data-close-modal="true"></div>
+      <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal__header">
+          <div>
+            <p class="eyebrow">作业参数</p>
+            <h3 id="settings-title">参数设置</h3>
+          </div>
+          <button id="close-settings" type="button" class="button button--ghost modal__close">关闭</button>
+        </div>
+        <label class="input-field">
+          <span>每小时关数</span>
+          <input id="moves-per-hour-input" type="number" min="1" step="1" value="25" />
+        </label>
+        <p class="muted">预估作业时长 = 当前贝位总箱量 / 每小时关数。</p>
+        <div class="modal__actions">
+          <button id="save-settings" type="button" class="button button--primary">应用参数</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
