@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bay Split Dashboard</title>
+    <title>船图分票系统</title>
     <script>
-      window.__ROOT_PATH__ = "__ROOT_PATH__";
+      window.BAY_SPLIT_ROOT_PATH = "__ROOT_PATH__";
     </script>
     <link rel="stylesheet" href="__ROOT_PATH__/static/styles.css" />
   </head>
@@ -85,9 +85,6 @@
             </p>
           </div>
           <div class="hero__actions">
-            <button id="sort-total-button" type="button" class="button button--ghost hero__button">
-              按总计排序：默认
-            </button>
             <button id="settings-button" type="button" class="button button--ghost hero__button">
               参数设置
             </button>
@@ -100,7 +97,7 @@
           <div class="panel__header">
             <div>
               <p class="section-title">透视矩阵</p>
-              <p class="muted">行维度为 BAY，列维度为 持箱人 / 尺寸 / 箱高。</p>
+              <p class="muted">行维度为 BAY，列维度为 持箱人 / 仓上仓下 / 尺寸 / 箱高。</p>
             </div>
             <div id="base-filter-tags" class="tag-group"></div>
           </div>

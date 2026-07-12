@@ -64,20 +64,32 @@ def build_dashboard_payload(
     active_decks: bool,
     active_heights: bool,
     active_sizes: bool,
+    active_statuses: bool = True,
     selected_holders: set[str] | None = None,
     selected_decks: set[str] | None = None,
     selected_heights: set[str] | None = None,
     selected_sizes: set[str] | None = None,
+    selected_statuses: set[str] | None = None,
 ) -> dict[str, Any]:
     available_holders = sorted({record.holder for record in records})
     available_decks = [value for value in ("舱上", "舱下", "未知") if any(r.deck == value for r in records)]
     available_heights = sorted({record.height for record in records})
     available_sizes = sorted({record.size for record in records}, key=_natural_order)
+    available_statuses = sorted({record.status for record in records})
+    default_statuses = {BASE_STATUS} & set(available_statuses)
+    if not default_statuses:
+        default_statuses = set(available_statuses)
 
     holders = _resolve_selected_values(available_holders, active_holders, selected_holders)
     decks = _resolve_selected_values(available_decks, active_decks, selected_decks)
     heights = _resolve_selected_values(available_heights, active_heights, selected_heights)
     sizes = _resolve_selected_values(available_sizes, active_sizes, selected_sizes)
+    statuses = _resolve_selected_values(
+        available_statuses,
+        active_statuses,
+        selected_statuses,
+        default_selected=default_statuses,
+    )
 
     filtered_records = filter_records(
         records=records,
@@ -85,18 +97,26 @@ def build_dashboard_payload(
         active_decks=active_decks,
         active_heights=active_heights,
         active_sizes=active_sizes,
+        active_statuses=active_statuses,
         selected_holders=holders,
         selected_decks=decks,
         selected_heights=heights,
         selected_sizes=sizes,
+        selected_statuses=statuses,
     )
 
-    columns = _build_columns(filtered_records, active_holders=active_holders, active_heights=active_heights)
+    columns = _build_columns(
+        filtered_records,
+        active_holders=active_holders,
+        active_decks=active_decks,
+        active_heights=active_heights,
+    )
     matrix = _build_matrix(
         filtered_records,
         warnings,
         columns,
         active_holders=active_holders,
+        active_decks=active_decks,
         active_heights=active_heights,
     )
     summary = _build_summary(filtered_records)
@@ -105,7 +125,7 @@ def build_dashboard_payload(
         "meta": {
             "sessionName": session_name,
             "sourceSheet": source_sheet,
-            "baseFilters": {"箱状态": BASE_STATUS, "箱型": BASE_TYPE},
+            "baseFilters": {"箱型": BASE_TYPE},
         },
         "filters": {
             "available": {
@@ -113,18 +133,28 @@ def build_dashboard_payload(
                 "decks": available_decks,
                 "heights": available_heights,
                 "sizes": available_sizes,
+                "statuses": available_statuses,
             },
             "active": {
                 "holders": active_holders,
                 "decks": active_decks,
                 "heights": active_heights,
                 "sizes": active_sizes,
+                "statuses": active_statuses,
             },
             "selected": {
                 "holders": sorted(holders),
                 "decks": sorted(decks),
                 "heights": sorted(heights),
                 "sizes": sorted(sizes, key=_natural_order),
+                "statuses": sorted(statuses),
+            },
+            "defaults": {
+                "holders": available_holders,
+                "decks": available_decks,
+                "heights": available_heights,
+                "sizes": available_sizes,
+                "statuses": sorted(default_statuses),
             },
         },
         "summary": summary,
@@ -140,10 +170,12 @@ def filter_records(
     active_decks: bool,
     active_heights: bool,
     active_sizes: bool,
+    active_statuses: bool,
     selected_holders: set[str],
     selected_decks: set[str],
     selected_heights: set[str],
     selected_sizes: set[str],
+    selected_statuses: set[str],
 ) -> list[ContainerRecord]:
     return [
         record
@@ -152,6 +184,7 @@ def filter_records(
         and (not active_decks or record.deck in selected_decks)
         and (not active_heights or record.height in selected_heights)
         and (not active_sizes or record.size in selected_sizes)
+        and (not active_statuses or record.status in selected_statuses)
     ]
 
 
@@ -188,7 +221,7 @@ def _load_filtered_records(sheet: xlrd.sheet.Sheet) -> list[ContainerRecord]:
     for row_index in range(1, sheet.nrows):
         box_status = _cell_to_text(sheet.cell_value(row_index, column_map["箱状态"]))
         box_type = _cell_to_text(sheet.cell_value(row_index, column_map["箱型"]))
-        if box_status != BASE_STATUS or box_type != BASE_TYPE:
+        if box_type != BASE_TYPE:
             continue
 
         ship_slot = _cell_to_text(sheet.cell_value(row_index, column_map["船箱位"]))
@@ -285,27 +318,30 @@ def _build_columns(
     records: list[ContainerRecord],
     *,
     active_holders: bool,
+    active_decks: bool,
     active_heights: bool,
 ) -> list[dict[str, str]]:
     column_keys = sorted(
         {
             (
                 record.holder if active_holders else "全部持箱人",
+                record.deck if active_decks else "全部仓位",
                 record.size,
                 record.height if active_heights else "全部箱高",
             )
             for record in records
         },
-        key=lambda item: (item[0], _natural_order(item[1]), item[2]),
+        key=lambda item: (item[0], _deck_order(item[1]), _natural_order(item[2]), item[3]),
     )
     return [
         {
-            "key": _column_key(holder, size, height),
+            "key": _column_key(holder, deck, size, height),
             "holder": holder,
+            "deck": deck,
             "size": size,
             "height": height,
         }
-        for holder, size, height in column_keys
+        for holder, deck, size, height in column_keys
     ]
 
 
@@ -315,6 +351,7 @@ def _build_matrix(
     columns: list[dict[str, str]],
     *,
     active_holders: bool,
+    active_decks: bool,
     active_heights: bool,
 ) -> dict[str, Any]:
     counts_by_bay: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -323,6 +360,7 @@ def _build_matrix(
     for record in records:
         key = _column_key(
             record.holder if active_holders else "全部持箱人",
+            record.deck if active_decks else "全部仓位",
             record.size,
             record.height if active_heights else "全部箱高",
         )
@@ -379,16 +417,22 @@ def _resolve_selected_values(
     available: list[str],
     active: bool,
     selected: set[str] | None,
+    default_selected: set[str] | None = None,
 ) -> set[str]:
     if not active:
         return set()
     if selected is None:
-        return set(available)
+        return set(default_selected) if default_selected is not None else set(available)
     return set(selected)
 
 
-def _column_key(holder: str, size: str, height: str) -> str:
-    return f"{holder}|{size}|{height}"
+def _column_key(holder: str, deck: str, size: str, height: str) -> str:
+    return f"{holder}|{deck}|{size}|{height}"
+
+
+def _deck_order(value: str) -> int:
+    order = {"舱上": 0, "舱下": 1, "未知": 2, "全部仓位": 3}
+    return order.get(value, 9)
 
 
 def _format_warning_tags(warning: BayWarning | None) -> list[dict[str, Any]]:

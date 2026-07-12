@@ -44,15 +44,21 @@ class ExcelServiceTests(unittest.TestCase):
         )
 
         totals = payload["matrix"]["totals"]
+        totals_by_holder_size_height = {}
+        for key, value in totals["values"].items():
+            holder, _, size, height = key.split("|")
+            totals_by_holder_size_height[(holder, size, height)] = (
+                totals_by_holder_size_height.get((holder, size, height), 0) + value
+            )
         self.assertEqual(totals["total"], 2331)
-        self.assertEqual(totals["values"]["ONE|20|PQ"], 101)
-        self.assertEqual(totals["values"]["ONE|40|HQ"], 1126)
-        self.assertEqual(totals["values"]["ONE|40|PQ"], 39)
-        self.assertEqual(totals["values"]["YML|20|PQ"], 272)
-        self.assertEqual(totals["values"]["YML|40|HQ"], 731)
-        self.assertEqual(totals["values"]["YML|40|PQ"], 56)
-        self.assertEqual(totals["values"]["YML|45|HQ"], 1)
-        self.assertEqual(totals["values"]["YML|53|HQ"], 5)
+        self.assertEqual(totals_by_holder_size_height[("ONE", "20", "PQ")], 101)
+        self.assertEqual(totals_by_holder_size_height[("ONE", "40", "HQ")], 1126)
+        self.assertEqual(totals_by_holder_size_height[("ONE", "40", "PQ")], 39)
+        self.assertEqual(totals_by_holder_size_height[("YML", "20", "PQ")], 272)
+        self.assertEqual(totals_by_holder_size_height[("YML", "40", "HQ")], 731)
+        self.assertEqual(totals_by_holder_size_height[("YML", "40", "PQ")], 56)
+        self.assertEqual(totals_by_holder_size_height[("YML", "45", "HQ")], 1)
+        self.assertEqual(totals_by_holder_size_height[("YML", "53", "HQ")], 5)
 
     def test_zero_selected_holders_returns_empty_matrix(self) -> None:
         payload = build_dashboard_payload(
@@ -87,6 +93,22 @@ class ExcelServiceTests(unittest.TestCase):
         holders = {column["holder"] for column in payload["matrix"]["columns"]}
         self.assertEqual(holders, {"全部持箱人"})
 
+    def test_active_deck_dimension_is_exposed_in_columns(self) -> None:
+        payload = build_dashboard_payload(
+            records=self.sample["records"],
+            warnings=self.sample["warnings"],
+            session_name=self.sample["session_name"],
+            source_sheet=self.sample["source_sheet"],
+            active_holders=True,
+            active_decks=True,
+            active_heights=True,
+            active_sizes=True,
+        )
+
+        decks = {column["deck"] for column in payload["matrix"]["columns"]}
+        self.assertIn("舱上", decks)
+        self.assertIn("舱下", decks)
+
     def test_warning_tags_are_attached_to_bay_rows(self) -> None:
         payload = build_dashboard_payload(
             records=self.sample["records"],
@@ -118,6 +140,38 @@ class ExcelServiceTests(unittest.TestCase):
 
         sizes = {column["size"] for column in payload["matrix"]["columns"]}
         self.assertEqual(sizes, {"20"})
+
+    def test_status_filter_defaults_to_ie_but_exposes_other_statuses(self) -> None:
+        payload = build_dashboard_payload(
+            records=self.sample["records"],
+            warnings=self.sample["warnings"],
+            session_name=self.sample["session_name"],
+            source_sheet=self.sample["source_sheet"],
+            active_holders=True,
+            active_decks=True,
+            active_heights=True,
+            active_sizes=True,
+        )
+
+        self.assertEqual(payload["filters"]["selected"]["statuses"], ["IE"])
+        self.assertEqual(payload["filters"]["defaults"]["statuses"], ["IE"])
+        self.assertIn("TE", payload["filters"]["available"]["statuses"])
+
+    def test_status_filter_can_switch_to_te(self) -> None:
+        payload = build_dashboard_payload(
+            records=self.sample["records"],
+            warnings=self.sample["warnings"],
+            session_name=self.sample["session_name"],
+            source_sheet=self.sample["source_sheet"],
+            active_holders=True,
+            active_decks=True,
+            active_heights=True,
+            active_sizes=True,
+            selected_statuses={"TE"},
+        )
+
+        self.assertEqual(payload["rowCount"], 409)
+        self.assertEqual(payload["summary"]["containers"], 409)
 
     def test_parse_voyage_metadata_uses_manual_voyage_when_filename_has_no_underscore(self) -> None:
         metadata = parse_voyage_metadata("第一致敬.XLS", "031WJ")

@@ -3,22 +3,28 @@ const state = {
   currentVoyageId: null,
   data: null,
   movesPerHour: 25,
-  sortByTotal: "default",
+  sort: {
+    key: null,
+    direction: null,
+  },
   selectedBays: new Set(),
   active: {
     holders: true,
     decks: true,
     heights: true,
     sizes: true,
+    statuses: true,
   },
   selected: {
     holders: new Set(),
     decks: new Set(),
     heights: new Set(),
     sizes: new Set(),
+    statuses: new Set(),
   },
 };
-const ROOT_PATH = (window.__ROOT_PATH__ || "").replace(/\/$/, "");
+const ROOT_PATH = (window.BAY_SPLIT_ROOT_PATH || "").replace(/\/$/, "");
+const FILTER_KEYS = ["holders", "decks", "heights", "sizes", "statuses"];
 
 function withRootPath(path) {
   return `${ROOT_PATH}${path}`;
@@ -43,7 +49,6 @@ const filterPanel = document.getElementById("filter-panel");
 const ticketList = document.getElementById("ticket-list");
 const baseFilterTags = document.getElementById("base-filter-tags");
 const pivotTable = document.getElementById("pivot-table");
-const sortTotalButton = document.getElementById("sort-total-button");
 const settingsButton = document.getElementById("settings-button");
 const settingsModal = document.getElementById("settings-modal");
 const closeSettingsButton = document.getElementById("close-settings");
@@ -102,10 +107,11 @@ resetFiltersButton.addEventListener("click", async () => {
     decks: true,
     heights: true,
     sizes: true,
+    statuses: true,
   };
-  resetSelectionsToAvailable();
+  resetSelectionsToDefaults();
   state.selectedBays.clear();
-  state.sortByTotal = "default";
+  state.sort = { key: null, direction: null };
   await refreshDashboard();
 });
 
@@ -127,10 +133,12 @@ createTicketButton.addEventListener("click", async () => {
       active_decks: state.active.decks,
       active_heights: state.active.heights,
       active_sizes: state.active.sizes,
+      active_statuses: state.active.statuses,
       selected_holders: [...state.selected.holders],
       selected_decks: [...state.selected.decks],
       selected_heights: [...state.selected.heights],
       selected_sizes: [...state.selected.sizes],
+      selected_statuses: [...state.selected.statuses],
       selected_bays: [...state.selectedBays],
     }),
   });
@@ -143,17 +151,6 @@ createTicketButton.addEventListener("click", async () => {
 
   state.selectedBays.clear();
   await refreshDashboard();
-});
-
-sortTotalButton.addEventListener("click", () => {
-  state.sortByTotal =
-    state.sortByTotal === "default"
-      ? "desc"
-      : state.sortByTotal === "desc"
-        ? "asc"
-        : "default";
-  renderSortButton();
-  renderTable();
 });
 
 settingsButton.addEventListener("click", () => {
@@ -201,19 +198,21 @@ async function loadVoyages() {
 async function openVoyage(voyageId) {
   state.currentVoyageId = voyageId;
   updateRoute();
-  state.sortByTotal = "default";
+  state.sort = { key: null, direction: null };
   state.selectedBays.clear();
   state.active = {
     holders: true,
     decks: true,
     heights: true,
     sizes: true,
+    statuses: true,
   };
   state.selected = {
     holders: new Set(),
     decks: new Set(),
     heights: new Set(),
     sizes: new Set(),
+    statuses: new Set(),
   };
   await refreshDashboard(true);
   renderLayout();
@@ -229,8 +228,9 @@ async function refreshDashboard(initialize = false) {
   params.set("active_decks", String(state.active.decks));
   params.set("active_heights", String(state.active.heights));
   params.set("active_sizes", String(state.active.sizes));
+  params.set("active_statuses", String(state.active.statuses));
 
-  ["holders", "decks", "heights", "sizes"].forEach((group) => {
+  FILTER_KEYS.forEach((group) => {
     if (!initialize) {
       params.set(`${group}_specified`, "true");
     }
@@ -254,24 +254,25 @@ async function refreshDashboard(initialize = false) {
 }
 
 function syncInitialFilters() {
-  ["holders", "decks", "heights", "sizes"].forEach((group) => {
+  FILTER_KEYS.forEach((group) => {
     state.active[group] = state.data.filters.active[group];
     state.selected[group] = new Set(state.data.filters.selected[group]);
   });
 }
 
 function clampSelectionsToAvailable() {
-  ["holders", "decks", "heights", "sizes"].forEach((group) => {
+  FILTER_KEYS.forEach((group) => {
     const available = new Set(state.data.filters.available[group]);
     state.selected[group] = new Set([...state.selected[group]].filter((value) => available.has(value)));
   });
 }
 
-function resetSelectionsToAvailable() {
-  state.selected.holders = new Set(state.data.filters.available.holders);
-  state.selected.decks = new Set(state.data.filters.available.decks);
-  state.selected.heights = new Set(state.data.filters.available.heights);
-  state.selected.sizes = new Set(state.data.filters.available.sizes);
+function resetSelectionsToDefaults() {
+  FILTER_KEYS.forEach((group) => {
+    state.selected[group] = new Set(
+      state.data.filters.defaults[group] || state.data.filters.available[group]
+    );
+  });
 }
 
 function clampSelectedBaysToRows() {
@@ -315,14 +316,13 @@ function renderVoyageView() {
   renderFilters();
   renderTickets();
   renderTags();
-  renderSortButton();
   renderTable();
 }
 
 function renderHero() {
   const { voyage } = state.data;
   heroTitle.textContent = voyage.displayName;
-  heroSubtitle.textContent = "页面会展示按 BAY 展开的箱量矩阵、贝位预警标签与预估作业时长。";
+  heroSubtitle.textContent = "页面会展示按 BAY 展开的箱量矩阵与贝位预警标签，预估作业时长默认隐藏。";
   sidebarTitle.textContent = voyage.shipName;
 }
 
@@ -354,6 +354,7 @@ function renderFilters() {
     ["decks", "仓上 / 仓下", "开启后按仓位属性筛选，关闭后不区分仓上和仓下。"],
     ["heights", "箱高", "开启后按箱高筛选和分类，关闭后全部视为一类。"],
     ["sizes", "尺寸", "开启后按尺寸筛选，关闭后不限制尺寸。"],
+    ["statuses", "箱状态", "开启后按箱状态筛选，关闭后不限制箱状态。"],
   ];
 
   filterPanel.innerHTML = "";
@@ -372,7 +373,9 @@ function renderFilters() {
     toggle.addEventListener("change", async (event) => {
       state.active[key] = event.target.checked;
       if (state.active[key] && state.selected[key].size === 0) {
-        state.selected[key] = new Set(state.data.filters.available[key]);
+        state.selected[key] = new Set(
+          state.data.filters.defaults[key] || state.data.filters.available[key]
+        );
       }
       state.selectedBays.clear();
       await refreshDashboard();
@@ -430,12 +433,6 @@ function renderTags() {
     .join("");
 }
 
-function renderSortButton() {
-  const label =
-    state.sortByTotal === "default" ? "默认" : state.sortByTotal === "desc" ? "降序" : "升序";
-  sortTotalButton.textContent = `按总计排序：${label}`;
-}
-
 function renderTable() {
   const matrix = {
     ...state.data.matrix,
@@ -448,7 +445,7 @@ function renderTable() {
       <thead>
         <tr>
           <th>选择</th>
-          <th>BAY</th>
+          <th>贝位</th>
           <th>总计</th>
         </tr>
       </thead>
@@ -467,10 +464,21 @@ function renderTable() {
   const holderRow = holderGroups
     .map(([holder, items]) => `<th colspan="${items.length}">${holder}</th>`)
     .join("");
+  const deckRow = holderGroups
+    .map(([, items]) =>
+      groupBy(items, "deck")
+        .map(([deck, subItems]) => `<th colspan="${subItems.length}">${deck}</th>`)
+        .join("")
+    )
+    .join("");
   const sizeRow = holderGroups
     .map(([, items]) =>
-      groupBy(items, "size")
-        .map(([size, subItems]) => `<th colspan="${subItems.length}">${size}</th>`)
+      groupBy(items, "deck")
+        .map(([, deckItems]) =>
+          groupBy(deckItems, "size")
+            .map(([size, subItems]) => `<th colspan="${subItems.length}">${size}</th>`)
+            .join("")
+        )
         .join("")
     )
     .join("");
@@ -483,7 +491,7 @@ function renderTable() {
         .map((column) => `<td>${row.values[column.key] || ""}</td>`)
         .join("");
       return `
-        <tr>
+        <tr data-bay-row="${row.bay}">
           <td>
             <input type="checkbox" data-bay-checkbox="${row.bay}" ${state.selectedBays.has(row.bay) ? "checked" : ""} />
           </td>
@@ -502,11 +510,12 @@ function renderTable() {
   pivotTable.innerHTML = `
     <thead>
       <tr>
-        <th rowspan="3"><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
-        <th rowspan="3">BAY / 预估时长</th>
+        <th rowspan="4"><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
+        <th rowspan="4">${renderSortHeaderLabel("贝位", "bay")}</th>
         ${holderRow}
-        <th rowspan="3">总计</th>
+        <th rowspan="4">${renderSortHeaderLabel("总计", "total")}</th>
       </tr>
+      <tr>${deckRow}</tr>
       <tr>${sizeRow}</tr>
       <tr>${heightRow}</tr>
     </thead>
@@ -521,7 +530,50 @@ function renderTable() {
     </tbody>
   `;
 
+  bindTableSortEvents();
   bindBaySelectionEvents(rows);
+}
+
+function renderSortHeaderLabel(label, key) {
+  const isActive = state.sort.key === key;
+  const directionLabel =
+    !isActive || !state.sort.direction
+      ? ""
+      : state.sort.direction === "asc"
+        ? "（升序）"
+        : "（降序）";
+
+  return `
+    <button
+      type="button"
+      class="table-sort${isActive ? " table-sort--active" : ""}"
+      data-sort-key="${key}"
+    >
+      ${label}${directionLabel}
+    </button>
+  `;
+}
+
+function bindTableSortEvents() {
+  document.querySelectorAll("[data-sort-key]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      cycleSort(event.currentTarget.dataset.sortKey);
+      renderTable();
+    });
+  });
+}
+
+function cycleSort(key) {
+  const sequence = key === "total" ? ["desc", "asc", null] : ["asc", "desc", null];
+
+  if (state.sort.key !== key) {
+    state.sort = { key, direction: sequence[0] };
+    return;
+  }
+
+  const nextIndex = (sequence.indexOf(state.sort.direction) + 1) % sequence.length;
+  const nextDirection = sequence[nextIndex];
+  state.sort = nextDirection ? { key, direction: nextDirection } : { key: null, direction: null };
 }
 
 function bindBaySelectionEvents(rows) {
@@ -550,17 +602,52 @@ function bindBaySelectionEvents(rows) {
       renderTable();
     });
   });
+
+  document.querySelectorAll("[data-bay-row]").forEach((tableRow) => {
+    tableRow.addEventListener("click", (event) => {
+      if (event.target.closest('input, button, a, label')) {
+        return;
+      }
+
+      const bay = tableRow.dataset.bayRow;
+      if (!bay) {
+        return;
+      }
+
+      if (state.selectedBays.has(bay)) {
+        state.selectedBays.delete(bay);
+      } else {
+        state.selectedBays.add(bay);
+      }
+      renderTickets();
+      renderTable();
+    });
+  });
 }
 
 function sortRows(rows) {
-  if (state.sortByTotal === "default") {
+  if (!state.sort.key || !state.sort.direction) {
     return rows;
   }
 
-  const sorted = [...rows].sort((left, right) =>
-    state.sortByTotal === "desc" ? right.total - left.total : left.total - right.total
-  );
-  return sorted;
+  const direction = state.sort.direction === "desc" ? -1 : 1;
+  return [...rows].sort((left, right) => {
+    if (state.sort.key === "total") {
+      return (left.total - right.total) * direction;
+    }
+
+    return compareNatural(left.bay, right.bay) * direction;
+  });
+}
+
+function compareNatural(left, right) {
+  if (left === right) {
+    return 0;
+  }
+  if (/^\d+$/.test(left) && /^\d+$/.test(right)) {
+    return Number(left) - Number(right);
+  }
+  return left.localeCompare(right, "zh-CN");
 }
 
 function renderBayCell(row) {
@@ -573,9 +660,11 @@ function renderBayCell(row) {
 
   return `
     <div class="bay-cell">
-      <div class="bay-cell__title">${row.bay}</div>
+      <div class="bay-cell__head">
+        <div class="bay-cell__title">${row.bay}</div>
+        ${warnings ? `<div class="warning-list">${warnings}</div>` : ""}
+      </div>
       <div class="bay-cell__eta">预估 ${formatDuration(row.total)}</div>
-      ${warnings ? `<div class="warning-list">${warnings}</div>` : ""}
     </div>
   `;
 }

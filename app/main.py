@@ -39,10 +39,12 @@ class TicketRequest(BaseModel):
     active_decks: bool = True
     active_heights: bool = True
     active_sizes: bool = True
+    active_statuses: bool = True
     selected_holders: list[str] = []
     selected_decks: list[str] = []
     selected_heights: list[str] = []
     selected_sizes: list[str] = []
+    selected_statuses: list[str] = []
     selected_bays: list[str] = []
 
 
@@ -81,14 +83,17 @@ def get_dashboard(
     active_decks: bool = Query(default=True),
     active_heights: bool = Query(default=True),
     active_sizes: bool = Query(default=True),
+    active_statuses: bool = Query(default=True),
     holders_specified: bool = Query(default=False),
     decks_specified: bool = Query(default=False),
     heights_specified: bool = Query(default=False),
     sizes_specified: bool = Query(default=False),
+    statuses_specified: bool = Query(default=False),
     holders: list[str] | None = Query(default=None),
     decks: list[str] | None = Query(default=None),
     heights: list[str] | None = Query(default=None),
     sizes: list[str] | None = Query(default=None),
+    statuses: list[str] | None = Query(default=None),
 ) -> dict:
     voyage = _get_voyage(voyage_id)
 
@@ -101,10 +106,12 @@ def get_dashboard(
         active_decks=active_decks,
         active_heights=active_heights,
         active_sizes=active_sizes,
+        active_statuses=active_statuses,
         selected_holders=set(holders or []) if holders_specified else None,
         selected_decks=set(decks or []) if decks_specified else None,
         selected_heights=set(heights or []) if heights_specified else None,
         selected_sizes=set(sizes or []) if sizes_specified else None,
+        selected_statuses=set(statuses or []) if statuses_specified else None,
     )
     payload["voyage"] = _serialize_voyage_summary(voyage)
     payload["tickets"] = [_serialize_ticket(ticket, voyage_id) for ticket in voyage["tickets"]]
@@ -124,10 +131,12 @@ def create_ticket(voyage_id: str, request: TicketRequest) -> dict:
         active_decks=request.active_decks,
         active_heights=request.active_heights,
         active_sizes=request.active_sizes,
+        active_statuses=request.active_statuses,
         selected_holders=set(request.selected_holders),
         selected_decks=set(request.selected_decks),
         selected_heights=set(request.selected_heights),
         selected_sizes=set(request.selected_sizes),
+        selected_statuses=set(request.selected_statuses),
     )
     selected_records = [record for record in filtered if record.bay in selected_bays]
     if not selected_records:

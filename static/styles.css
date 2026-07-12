@@ -502,6 +502,20 @@ input {
   background: rgba(249, 250, 251, 0.94);
 }
 
+.table-sort {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.table-sort--active {
+  color: var(--primary);
+}
+
 .pivot-table tbody tr:hover {
   background: rgba(24, 119, 242, 0.05);
 }
@@ -529,8 +543,15 @@ input {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
   min-width: 148px;
+}
+
+.bay-cell__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .bay-cell__title {
@@ -539,6 +560,7 @@ input {
 }
 
 .bay-cell__eta {
+  display: none;
   font-size: 12px;
   color: var(--muted);
 }
@@ -546,6 +568,7 @@ input {
 .warning-list {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
