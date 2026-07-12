@@ -49,4 +49,5 @@ example/**/.vite/
 Thumbs.db
 .DS_Store
 
-example/
+*.bundle
+material-kit-react-main/

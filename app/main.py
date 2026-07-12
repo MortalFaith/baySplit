@@ -48,7 +48,7 @@ class TicketRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
-    root_path = request.scope.get("root_path", "").rstrip("/")
+    root_path = ROOT_PATH or request.scope.get("root_path", "").rstrip("/")
     html = INDEX_HTML.replace("__ROOT_PATH__", root_path)
     return HTMLResponse(html)
 
