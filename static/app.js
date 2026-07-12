@@ -3,6 +3,9 @@ const state = {
   currentVoyageId: null,
   data: null,
   movesPerHour: 25,
+  activeSheet: "bay",
+  bayFilterEnabled: false,
+  holderViewHolder: null,
   sort: {
     key: null,
     direction: null,
@@ -23,8 +26,26 @@ const state = {
     statuses: new Set(),
   },
 };
+
 const ROOT_PATH = (window.BAY_SPLIT_ROOT_PATH || "").replace(/\/$/, "");
 const FILTER_KEYS = ["holders", "decks", "heights", "sizes", "statuses"];
+const SHEETS = [
+  {
+    key: "bay",
+    label: "按贝位",
+    description: "行维度为贝位，列维度为 持箱人 / 仓上仓下 / 尺寸 / 箱高。",
+  },
+  {
+    key: "holderBay",
+    label: "持箱人 x 贝位",
+    description: "列名为各个贝位，纵轴为持箱人，可快速对比各持箱人的贝位分布。",
+  },
+  {
+    key: "holderLoadPort",
+    label: "装货港 x 贝位",
+    description: "单一持箱人视图：列名为装货港，纵轴为贝位，并分别显示舱上 / 舱下箱量。",
+  },
+];
 
 function withRootPath(path) {
   return `${ROOT_PATH}${path}`;
@@ -42,13 +63,16 @@ const backHomeButton = document.getElementById("back-home-button");
 const createTicketButton = document.getElementById("create-ticket-button");
 const resetFiltersButton = document.getElementById("reset-filters");
 const heroTitle = document.getElementById("hero-title");
-const heroSubtitle = document.getElementById("hero-subtitle");
 const sidebarTitle = document.getElementById("sidebar-title");
-const summaryGrid = document.getElementById("summary-grid");
 const filterPanel = document.getElementById("filter-panel");
 const ticketList = document.getElementById("ticket-list");
 const baseFilterTags = document.getElementById("base-filter-tags");
 const pivotTable = document.getElementById("pivot-table");
+const matrixDescription = document.getElementById("matrix-description");
+const sheetTabs = document.getElementById("sheet-tabs");
+const toggleBayFilterButton = document.getElementById("toggle-bay-filter-button");
+const holderViewControls = document.getElementById("holder-view-controls");
+const holderViewSelect = document.getElementById("holder-view-select");
 const settingsButton = document.getElementById("settings-button");
 const settingsModal = document.getElementById("settings-modal");
 const closeSettingsButton = document.getElementById("close-settings");
@@ -111,7 +135,9 @@ resetFiltersButton.addEventListener("click", async () => {
   };
   resetSelectionsToDefaults();
   state.selectedBays.clear();
+  state.bayFilterEnabled = false;
   state.sort = { key: null, direction: null };
+  state.holderViewHolder = null;
   await refreshDashboard();
 });
 
@@ -150,7 +176,18 @@ createTicketButton.addEventListener("click", async () => {
   }
 
   state.selectedBays.clear();
+  state.bayFilterEnabled = false;
   await refreshDashboard();
+});
+
+toggleBayFilterButton.addEventListener("click", () => {
+  toggleBayFilter();
+});
+
+holderViewSelect.addEventListener("change", (event) => {
+  state.holderViewHolder = event.target.value || null;
+  state.sort = { key: null, direction: null };
+  renderTable();
 });
 
 settingsButton.addEventListener("click", () => {
@@ -178,6 +215,17 @@ settingsModal.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() !== "s" || event.ctrlKey || event.metaKey || event.altKey) {
+    return;
+  }
+  if (isTypingTarget(event.target) || !state.currentVoyageId || !state.data) {
+    return;
+  }
+  event.preventDefault();
+  toggleBayFilter();
+});
+
 async function init() {
   await loadVoyages();
   const voyageId = new URLSearchParams(window.location.search).get("voyage");
@@ -198,6 +246,9 @@ async function loadVoyages() {
 async function openVoyage(voyageId) {
   state.currentVoyageId = voyageId;
   updateRoute();
+  state.activeSheet = "bay";
+  state.bayFilterEnabled = false;
+  state.holderViewHolder = null;
   state.sort = { key: null, direction: null };
   state.selectedBays.clear();
   state.active = {
@@ -249,7 +300,9 @@ async function refreshDashboard(initialize = false) {
   } else {
     clampSelectionsToAvailable();
   }
-  clampSelectedBaysToRows();
+  clampSelectedBaysToRecords();
+  syncBayFilterState();
+  syncHolderViewState();
   renderVoyageView();
 }
 
@@ -275,13 +328,36 @@ function resetSelectionsToDefaults() {
   });
 }
 
-function clampSelectedBaysToRows() {
+function clampSelectedBaysToRecords() {
   if (!state.data) {
     return;
   }
 
-  const visibleBays = new Set(state.data.matrix.rows.map((row) => row.bay));
+  const visibleBays = new Set((state.data.records || []).map((record) => record.bay));
   state.selectedBays = new Set([...state.selectedBays].filter((bay) => visibleBays.has(bay)));
+}
+
+function syncBayFilterState() {
+  if (state.selectedBays.size === 0) {
+    state.bayFilterEnabled = false;
+  }
+}
+
+function syncHolderViewState() {
+  const holders = getAvailableHolders(getDisplayedRecords({ applyBayFilter: false }));
+  if (holders.length === 0) {
+    state.holderViewHolder = null;
+    return;
+  }
+
+  if (holders.length === 1) {
+    state.holderViewHolder = holders[0];
+    return;
+  }
+
+  if (!state.holderViewHolder || !holders.includes(state.holderViewHolder)) {
+    state.holderViewHolder = holders[0];
+  }
 }
 
 function renderLayout() {
@@ -312,40 +388,17 @@ function renderVoyageCards() {
 function renderVoyageView() {
   renderLayout();
   renderHero();
-  renderSummary();
   renderFilters();
   renderTickets();
   renderTags();
+  renderMatrixChrome();
   renderTable();
 }
 
 function renderHero() {
   const { voyage } = state.data;
   heroTitle.textContent = voyage.displayName;
-  heroSubtitle.textContent = "页面会展示按 BAY 展开的箱量矩阵与贝位预警标签，预估作业时长默认隐藏。";
   sidebarTitle.textContent = voyage.shipName;
-}
-
-function renderSummary() {
-  const { summary } = state.data;
-  const cards = [
-    ["箱量", summary.containers, "当前筛选后的集装箱数量"],
-    ["贝位数", summary.bays, "去重后的 BAY 数量"],
-    ["持箱人数", summary.holders, "当前筛选下的持箱人数量"],
-    ["舱位分布", `${summary.deckCounts["舱上"]}/${summary.deckCounts["舱下"]}`, "舱上 / 舱下"],
-  ];
-
-  summaryGrid.innerHTML = cards
-    .map(
-      ([label, value, meta]) => `
-        <article class="summary-card">
-          <p class="metric__label">${label}</p>
-          <p class="metric__value">${value}</p>
-          <p class="metric__meta">${meta}</p>
-        </article>
-      `
-    )
-    .join("");
 }
 
 function renderFilters() {
@@ -378,6 +431,8 @@ function renderFilters() {
         );
       }
       state.selectedBays.clear();
+      state.bayFilterEnabled = false;
+      state.holderViewHolder = null;
       await refreshDashboard();
     });
 
@@ -395,6 +450,8 @@ function renderFilters() {
           state.selected[key].delete(value);
         }
         state.selectedBays.clear();
+        state.bayFilterEnabled = false;
+        state.holderViewHolder = null;
         await refreshDashboard();
       });
       options.appendChild(chip);
@@ -433,41 +490,102 @@ function renderTags() {
     .join("");
 }
 
-function renderTable() {
-  const matrix = {
-    ...state.data.matrix,
-    rows: sortRows(state.data.matrix.rows),
-  };
-  const { columns, rows, totals } = matrix;
+function renderMatrixChrome() {
+  const currentSheet = SHEETS.find((sheet) => sheet.key === state.activeSheet) || SHEETS[0];
+  matrixDescription.textContent = currentSheet.description;
 
-  if (columns.length === 0) {
-    pivotTable.innerHTML = `
-      <thead>
-        <tr>
-          <th>选择</th>
-          <th>贝位</th>
-          <th>总计</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td></td>
-          <td class="row-label">-</td>
-          <td class="no-data">当前筛选没有匹配箱量，请调整开关或筛选项。</td>
-        </tr>
-      </tbody>
-    `;
+  sheetTabs.innerHTML = SHEETS.map(
+    (sheet) => `
+      <button
+        type="button"
+        class="sheet-tab${sheet.key === state.activeSheet ? " sheet-tab--active" : ""}"
+        data-sheet-tab="${sheet.key}"
+      >
+        ${sheet.label}
+      </button>
+    `
+  ).join("");
+
+  document.querySelectorAll("[data-sheet-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextSheet = button.dataset.sheetTab;
+      if (!nextSheet || nextSheet === state.activeSheet) {
+        return;
+      }
+      state.activeSheet = nextSheet;
+      state.sort = { key: null, direction: null };
+      syncHolderViewState();
+      renderMatrixChrome();
+      renderTable();
+    });
+  });
+
+  const selectedCount = state.selectedBays.size;
+  toggleBayFilterButton.disabled = selectedCount === 0 && !state.bayFilterEnabled;
+  toggleBayFilterButton.classList.toggle("matrix-action-button--active", state.bayFilterEnabled);
+  toggleBayFilterButton.textContent = state.bayFilterEnabled
+    ? "显示全部贝位（S）"
+    : selectedCount > 0
+      ? `筛选贝位（${selectedCount}）（S）`
+      : "筛选贝位（S）";
+
+  const holders = getAvailableHolders(getDisplayedRecords());
+  const shouldShowHolderSelect = state.activeSheet === "holderLoadPort" && holders.length > 0;
+  holderViewControls.classList.toggle("hidden", !shouldShowHolderSelect);
+
+  if (shouldShowHolderSelect) {
+    syncHolderViewState();
+    holderViewSelect.innerHTML = holders
+      .map(
+        (holder) => `
+          <option value="${escapeHtml(holder)}" ${
+            holder === state.holderViewHolder ? "selected" : ""
+          }>
+            ${escapeHtml(holder)}
+          </option>
+        `
+      )
+      .join("");
+  } else {
+    holderViewSelect.innerHTML = "";
+  }
+}
+
+function renderTable() {
+  if (!state.data) {
+    return;
+  }
+
+  if (state.activeSheet === "holderBay") {
+    renderHolderBayTable();
+    return;
+  }
+
+  if (state.activeSheet === "holderLoadPort") {
+    renderHolderLoadPortTable();
+    return;
+  }
+
+  renderBayTable();
+}
+
+function renderBayTable() {
+  const columns = state.data.matrix.columns || [];
+  const rows = getBayMatrixRows();
+
+  if (columns.length === 0 || rows.length === 0) {
+    renderEmptyTable({ primaryLabel: "贝位", selectable: true });
     return;
   }
 
   const holderGroups = groupBy(columns, "holder");
   const holderRow = holderGroups
-    .map(([holder, items]) => `<th colspan="${items.length}">${holder}</th>`)
+    .map(([holder, items]) => `<th colspan="${items.length}">${escapeHtml(holder)}</th>`)
     .join("");
   const deckRow = holderGroups
     .map(([, items]) =>
       groupBy(items, "deck")
-        .map(([deck, subItems]) => `<th colspan="${subItems.length}">${deck}</th>`)
+        .map(([deck, subItems]) => `<th colspan="${subItems.length}">${escapeHtml(deck)}</th>`)
         .join("")
     )
     .join("");
@@ -476,24 +594,24 @@ function renderTable() {
       groupBy(items, "deck")
         .map(([, deckItems]) =>
           groupBy(deckItems, "size")
-            .map(([size, subItems]) => `<th colspan="${subItems.length}">${size}</th>`)
+            .map(([size, subItems]) => `<th colspan="${subItems.length}">${escapeHtml(size)}</th>`)
             .join("")
         )
         .join("")
     )
     .join("");
-  const heightRow = columns.map((column) => `<th>${column.height}</th>`).join("");
+  const heightRow = columns.map((column) => `<th>${escapeHtml(column.height)}</th>`).join("");
   const allSelected = rows.length > 0 && rows.every((row) => state.selectedBays.has(row.bay));
 
   const bodyRows = rows
     .map((row) => {
-      const cells = columns
-        .map((column) => `<td>${row.values[column.key] || ""}</td>`)
-        .join("");
+      const cells = columns.map((column) => `<td>${row.values[column.key] || ""}</td>`).join("");
       return `
         <tr data-bay-row="${row.bay}">
           <td>
-            <input type="checkbox" data-bay-checkbox="${row.bay}" ${state.selectedBays.has(row.bay) ? "checked" : ""} />
+            <input type="checkbox" data-bay-checkbox="${row.bay}" ${
+              state.selectedBays.has(row.bay) ? "checked" : ""
+            } />
           </td>
           <td class="row-label">${renderBayCell(row)}</td>
           ${cells}
@@ -503,15 +621,14 @@ function renderTable() {
     })
     .join("");
 
-  const totalCells = columns
-    .map((column) => `<td>${totals.values[column.key] || ""}</td>`)
-    .join("");
+  const totals = buildMatrixTotals(rows, columns);
+  const totalCells = columns.map((column) => `<td>${totals.values[column.key] || ""}</td>`).join("");
 
   pivotTable.innerHTML = `
     <thead>
       <tr>
         <th rowspan="4"><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
-        <th rowspan="4">${renderSortHeaderLabel("贝位", "bay")}</th>
+        <th rowspan="4">${renderSortHeaderLabel("贝位", "primary")}</th>
         ${holderRow}
         <th rowspan="4">${renderSortHeaderLabel("总计", "total")}</th>
       </tr>
@@ -523,7 +640,7 @@ function renderTable() {
       ${bodyRows}
       <tr class="grand-total">
         <td></td>
-        <td class="total-label">${totals.bay}</td>
+        <td class="total-label">${totals.label}</td>
         ${totalCells}
         <td>${totals.total}</td>
       </tr>
@@ -532,6 +649,227 @@ function renderTable() {
 
   bindTableSortEvents();
   bindBaySelectionEvents(rows);
+}
+
+function renderHolderBayTable() {
+  const records = getDisplayedRecords();
+  const bays = uniqueSorted(records.map((record) => record.bay), compareNatural);
+  const holders = uniqueSorted(records.map((record) => record.holder), compareNatural);
+
+  if (bays.length === 0 || holders.length === 0) {
+    renderEmptyTable({ primaryLabel: "持箱人" });
+    return;
+  }
+
+  const counts = new Map();
+  records.forEach((record) => {
+    const key = `${record.holder}|${record.bay}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+
+  const rows = sortRows(
+    holders.map((holder) => {
+      const values = {};
+      bays.forEach((bay) => {
+        values[bay] = counts.get(`${holder}|${bay}`) || 0;
+      });
+      return {
+        label: holder,
+        sortValue: holder,
+        values,
+        total: Object.values(values).reduce((sum, value) => sum + value, 0),
+      };
+    })
+  );
+
+  const allTotals = {};
+  bays.forEach((bay) => {
+    allTotals[bay] = rows.reduce((sum, row) => sum + (row.values[bay] || 0), 0);
+  });
+
+  const bodyRows = rows
+    .map((row) => {
+      const cells = bays.map((bay) => `<td>${row.values[bay] || ""}</td>`).join("");
+      return `
+        <tr>
+          <td class="row-label">${escapeHtml(row.label)}</td>
+          ${cells}
+          <td>${row.total}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const totalCells = bays.map((bay) => `<td>${allTotals[bay] || ""}</td>`).join("");
+
+  pivotTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>${renderSortHeaderLabel("持箱人", "primary")}</th>
+        ${bays.map((bay) => `<th>${escapeHtml(bay)}</th>`).join("")}
+        <th>${renderSortHeaderLabel("总计", "total")}</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+      <tr class="grand-total">
+        <td class="total-label">总计</td>
+        ${totalCells}
+        <td>${Object.values(allTotals).reduce((sum, value) => sum + value, 0)}</td>
+      </tr>
+    </tbody>
+  `;
+
+  bindTableSortEvents();
+}
+
+function renderHolderLoadPortTable() {
+  const records = getDisplayedRecords();
+  const holders = getAvailableHolders(records);
+  if (holders.length === 0) {
+    renderEmptyTable({ primaryLabel: "贝位", selectable: true });
+    return;
+  }
+
+  syncHolderViewState();
+  const holderRecords = records.filter((record) => record.holder === state.holderViewHolder);
+  const bays = uniqueSorted(holderRecords.map((record) => record.bay), compareNatural);
+  const ports = uniqueSorted(
+    holderRecords.map((record) => record.loadPort || "未知"),
+    compareNatural
+  );
+
+  if (bays.length === 0 || ports.length === 0) {
+    renderEmptyTable({ primaryLabel: "贝位", selectable: true });
+    return;
+  }
+
+  const columns = [];
+  ports.forEach((port) => {
+    ["舱上", "舱下"].forEach((deck) => {
+      columns.push({
+        key: `${port}|${deck}`,
+        port,
+        deck,
+      });
+    });
+  });
+
+  const warningMap = buildWarningMap();
+  const counts = new Map();
+  holderRecords.forEach((record) => {
+    const key = `${record.bay}|${record.loadPort || "未知"}|${record.deck}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+
+  const rows = sortRows(
+    bays.map((bay) => {
+      const values = {};
+      columns.forEach((column) => {
+        values[column.key] = counts.get(`${bay}|${column.port}|${column.deck}`) || 0;
+      });
+      return {
+        bay,
+        sortValue: bay,
+        warnings: warningMap[bay] || [],
+        values,
+        total: Object.values(values).reduce((sum, value) => sum + value, 0),
+      };
+    })
+  );
+
+  const allSelected = rows.length > 0 && rows.every((row) => state.selectedBays.has(row.bay));
+  const totalCells = columns.map(
+    (column) => `<td>${rows.reduce((sum, row) => sum + (row.values[column.key] || 0), 0)}</td>`
+  );
+
+  const bodyRows = rows
+    .map((row) => {
+      const cells = columns.map((column) => `<td>${row.values[column.key] || ""}</td>`).join("");
+      return `
+        <tr data-bay-row="${row.bay}">
+          <td>
+            <input type="checkbox" data-bay-checkbox="${row.bay}" ${
+              state.selectedBays.has(row.bay) ? "checked" : ""
+            } />
+          </td>
+          <td class="row-label">${renderBayCell(row)}</td>
+          ${cells}
+          <td>${row.total}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  pivotTable.innerHTML = `
+    <thead>
+      <tr>
+        <th rowspan="2"><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
+        <th rowspan="2">${renderSortHeaderLabel("贝位", "primary")}</th>
+        ${ports.map((port) => `<th colspan="2">${escapeHtml(port)}</th>`).join("")}
+        <th rowspan="2">${renderSortHeaderLabel("总计", "total")}</th>
+      </tr>
+      <tr>${columns.map((column) => `<th>${escapeHtml(column.deck)}</th>`).join("")}</tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+      <tr class="grand-total">
+        <td></td>
+        <td class="total-label">总计</td>
+        ${totalCells.join("")}
+        <td>${rows.reduce((sum, row) => sum + row.total, 0)}</td>
+      </tr>
+    </tbody>
+  `;
+
+  bindTableSortEvents();
+  bindBaySelectionEvents(rows);
+}
+
+function renderEmptyTable({ primaryLabel, selectable = false }) {
+  pivotTable.innerHTML = `
+    <thead>
+      <tr>
+        ${selectable ? "<th>选择</th>" : ""}
+        <th>${escapeHtml(primaryLabel)}</th>
+        <th>总计</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        ${selectable ? "<td></td>" : ""}
+        <td class="row-label">-</td>
+        <td class="no-data">当前筛选没有匹配箱量，请调整开关、筛选项或贝位范围。</td>
+      </tr>
+    </tbody>
+  `;
+}
+
+function getBayMatrixRows() {
+  const sourceRows = state.data.matrix.rows || [];
+  const filteredRows =
+    state.bayFilterEnabled && state.selectedBays.size > 0
+      ? sourceRows.filter((row) => state.selectedBays.has(row.bay))
+      : sourceRows;
+
+  return sortRows(
+    filteredRows.map((row) => ({
+      ...row,
+      sortValue: row.bay,
+    }))
+  );
+}
+
+function buildMatrixTotals(rows, columns) {
+  const values = {};
+  columns.forEach((column) => {
+    values[column.key] = rows.reduce((sum, row) => sum + (row.values[column.key] || 0), 0);
+  });
+  return {
+    label: "总计",
+    values,
+    total: Object.values(values).reduce((sum, value) => sum + value, 0),
+  };
 }
 
 function renderSortHeaderLabel(label, key) {
@@ -585,8 +923,7 @@ function bindBaySelectionEvents(rows) {
       } else {
         rows.forEach((row) => state.selectedBays.delete(row.bay));
       }
-      renderTickets();
-      renderTable();
+      afterBaySelectionChange();
     });
   }
 
@@ -598,14 +935,13 @@ function bindBaySelectionEvents(rows) {
       } else {
         state.selectedBays.delete(bay);
       }
-      renderTickets();
-      renderTable();
+      afterBaySelectionChange();
     });
   });
 
   document.querySelectorAll("[data-bay-row]").forEach((tableRow) => {
     tableRow.addEventListener("click", (event) => {
-      if (event.target.closest('input, button, a, label')) {
+      if (event.target.closest("input, button, a, label, select")) {
         return;
       }
 
@@ -619,10 +955,28 @@ function bindBaySelectionEvents(rows) {
       } else {
         state.selectedBays.add(bay);
       }
-      renderTickets();
-      renderTable();
+      afterBaySelectionChange();
     });
   });
+}
+
+function afterBaySelectionChange() {
+  syncBayFilterState();
+  renderTickets();
+  renderMatrixChrome();
+  renderTable();
+}
+
+function toggleBayFilter() {
+  if (state.selectedBays.size === 0 && !state.bayFilterEnabled) {
+    window.alert("请先勾选至少一个贝位，再使用筛选贝位。");
+    return;
+  }
+
+  state.bayFilterEnabled = !state.bayFilterEnabled;
+  syncHolderViewState();
+  renderMatrixChrome();
+  renderTable();
 }
 
 function sortRows(rows) {
@@ -636,7 +990,7 @@ function sortRows(rows) {
       return (left.total - right.total) * direction;
     }
 
-    return compareNatural(left.bay, right.bay) * direction;
+    return compareNatural(left.sortValue, right.sortValue) * direction;
   });
 }
 
@@ -644,24 +998,28 @@ function compareNatural(left, right) {
   if (left === right) {
     return 0;
   }
-  if (/^\d+$/.test(left) && /^\d+$/.test(right)) {
-    return Number(left) - Number(right);
+  const leftValue = left == null ? "" : String(left);
+  const rightValue = right == null ? "" : String(right);
+  if (/^\d+$/.test(leftValue) && /^\d+$/.test(rightValue)) {
+    return Number(leftValue) - Number(rightValue);
   }
-  return left.localeCompare(right, "zh-CN");
+  return leftValue.localeCompare(rightValue, "zh-CN");
 }
 
 function renderBayCell(row) {
-  const warnings = row.warnings
+  const warnings = (row.warnings || [])
     .map(
       (warning) =>
-        `<span class="warning-pill warning-pill--${warning.kind}">${warning.label} ${warning.count}</span>`
+        `<span class="warning-pill warning-pill--${warning.kind}">${escapeHtml(warning.label)} ${
+          warning.count
+        }</span>`
     )
     .join("");
 
   return `
     <div class="bay-cell">
       <div class="bay-cell__head">
-        <div class="bay-cell__title">${row.bay}</div>
+        <div class="bay-cell__title">${escapeHtml(row.bay)}</div>
         ${warnings ? `<div class="warning-list">${warnings}</div>` : ""}
       </div>
       <div class="bay-cell__eta">预估 ${formatDuration(row.total)}</div>
@@ -709,6 +1067,46 @@ function updateRoute() {
 function closeSettingsModal() {
   settingsModal.classList.add("hidden");
   settingsModal.setAttribute("aria-hidden", "true");
+}
+
+function getDisplayedRecords({ applyBayFilter = true } = {}) {
+  const records = state.data?.records || [];
+  if (!applyBayFilter || !state.bayFilterEnabled || state.selectedBays.size === 0) {
+    return records;
+  }
+  return records.filter((record) => state.selectedBays.has(record.bay));
+}
+
+function getAvailableHolders(records) {
+  return uniqueSorted(
+    records.map((record) => record.holder).filter(Boolean),
+    compareNatural
+  );
+}
+
+function buildWarningMap() {
+  const warningMap = {};
+  (state.data.matrix.rows || []).forEach((row) => {
+    warningMap[row.bay] = row.warnings || [];
+  });
+  return warningMap;
+}
+
+function uniqueSorted(values, comparator) {
+  return [...new Set(values)].sort(comparator);
+}
+
+function isTypingTarget(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 async function readJson(response) {

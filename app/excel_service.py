@@ -158,6 +158,7 @@ def build_dashboard_payload(
             },
         },
         "summary": summary,
+        "records": [_serialize_record(record) for record in filtered_records],
         "matrix": matrix,
         "rowCount": len(filtered_records),
     }
@@ -398,6 +399,19 @@ def _build_summary(records: list[ContainerRecord]) -> dict[str, Any]:
         "bays": len({record.bay for record in records}),
         "holders": len({record.holder for record in records}),
         "deckCounts": deck_counts,
+    }
+
+
+def _serialize_record(record: ContainerRecord) -> dict[str, str]:
+    return {
+        "bay": record.bay,
+        "deck": record.deck,
+        "holder": record.holder,
+        "size": record.size,
+        "height": record.height,
+        "status": record.status,
+        "loadPort": record.load_port,
+        "dischargePort": record.discharge_port,
     }
 
 

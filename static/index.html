@@ -80,24 +80,37 @@
           <div>
             <p class="eyebrow">舱位透视统计</p>
             <h2 id="hero-title">等待载入数据</h2>
-            <p id="hero-subtitle" class="muted">
-              页面会展示按 BAY 展开的箱量矩阵、贝位预警标签与预估作业时长。
-            </p>
-          </div>
-          <div class="hero__actions">
-            <button id="settings-button" type="button" class="button button--ghost hero__button">
-              参数设置
-            </button>
           </div>
         </header>
 
-        <section id="summary-grid" class="summary-grid"></section>
-
         <section class="panel">
-          <div class="panel__header">
+          <div class="panel__header panel__header--matrix">
             <div>
               <p class="section-title">透视矩阵</p>
-              <p class="muted">行维度为 BAY，列维度为 持箱人 / 仓上仓下 / 尺寸 / 箱高。</p>
+              <p id="matrix-description" class="muted">行维度为 BAY，列维度为 持箱人 / 仓上仓下 / 尺寸 / 箱高。</p>
+            </div>
+            <div class="matrix-toolbar">
+              <div id="sheet-tabs" class="sheet-tabs"></div>
+              <div class="matrix-actions">
+                <button
+                  id="toggle-bay-filter-button"
+                  type="button"
+                  class="button button--ghost matrix-action-button"
+                >
+                  筛选贝位（S）
+                </button>
+                <button id="settings-button" type="button" class="button button--ghost matrix-action-button">
+                  参数设置
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="matrix-subbar">
+            <div id="holder-view-controls" class="holder-view-controls hidden">
+              <label class="inline-field">
+                <span>持箱人</span>
+                <select id="holder-view-select"></select>
+              </label>
             </div>
             <div id="base-filter-tags" class="tag-group"></div>
           </div>

@@ -21,6 +21,10 @@
   --radius-md: 14px;
 }
 
+html {
+  font-size: 15px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -47,23 +51,25 @@ input {
 
 .home-view {
   min-height: 100vh;
-  padding: 32px 24px 40px;
+  max-width: 1680px;
+  margin: 0 auto;
+  padding: 24px 20px 32px;
 }
 
 .home-hero {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
   align-items: stretch;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .home-brand {
-  min-height: 220px;
+  min-height: 188px;
 }
 
 .home-card {
-  padding: 28px;
+  padding: 24px;
   border-radius: var(--radius-xl);
   backdrop-filter: blur(20px);
   background: var(--paper-soft);
@@ -73,11 +79,11 @@ input {
 
 .home-card h2 {
   margin: 0 0 12px;
-  font-size: 34px;
+  font-size: 30px;
 }
 
 .home-list {
-  padding: 24px 28px 30px;
+  padding: 20px 24px 24px;
   border-radius: var(--radius-xl);
   backdrop-filter: blur(20px);
   background: var(--paper-soft);
@@ -101,7 +107,7 @@ input {
   align-items: flex-start;
   gap: 10px;
   width: 100%;
-  padding: 18px 20px;
+  padding: 16px 18px;
   border: 1px solid rgba(145, 158, 171, 0.18);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.78);
@@ -112,7 +118,7 @@ input {
 .voyage-card__title,
 .ticket-item__title {
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .voyage-card__meta,
@@ -127,10 +133,12 @@ input {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 24px;
+  grid-template-columns: minmax(260px, 288px) minmax(0, 1fr);
+  max-width: 1720px;
+  margin: 0 auto;
+  gap: 18px;
   min-height: 100vh;
-  padding: 24px;
+  padding: 18px;
 }
 
 .sidebar,
@@ -141,7 +149,7 @@ input {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .brand,
@@ -159,15 +167,15 @@ input {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 22px;
+  padding: 18px;
   border-radius: var(--radius-xl);
 }
 
 .brand__mark {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
   border-radius: 18px;
   color: #fff;
   font-weight: 700;
@@ -198,13 +206,13 @@ input {
 .sidebar__card,
 .panel {
   border-radius: var(--radius-xl);
-  padding: 20px;
+  padding: 18px;
 }
 
 .content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .hero {
@@ -212,8 +220,9 @@ input {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 28px;
+  padding: 18px 20px;
   border-radius: var(--radius-xl);
+  min-height: 96px;
 }
 
 .hero__actions {
@@ -247,39 +256,11 @@ input {
   padding-inline: 18px;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.summary-card {
-  padding: 20px;
-  border-radius: var(--radius-lg);
-}
-
-.metric__label {
-  margin: 0 0 10px;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.metric__value {
-  font-size: 34px;
-  font-weight: 700;
-}
-
-.metric__meta {
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .button {
   width: fit-content;
   border: 0;
   border-radius: 14px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   cursor: pointer;
   transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
@@ -334,7 +315,7 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px;
+  padding: 12px 14px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.76);
   border: 1px solid rgba(145, 158, 171, 0.14);
@@ -364,7 +345,7 @@ input {
 .filter-panel {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .filter-group h3 {
@@ -399,7 +380,7 @@ input {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 7px 11px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
@@ -459,7 +440,92 @@ input {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
+}
+
+.panel__header--matrix {
+  align-items: flex-start;
+}
+
+.matrix-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.sheet-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sheet-tab {
+  border: 1px solid rgba(24, 119, 242, 0.12);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sheet-tab--active {
+  color: #fff;
+  background: linear-gradient(135deg, #1877f2, #0c44ae);
+  box-shadow: 0 10px 18px rgba(24, 119, 242, 0.2);
+}
+
+.matrix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.matrix-action-button {
+  width: auto;
+  min-width: 124px;
+}
+
+.matrix-action-button--active {
+  color: #fff;
+  background: linear-gradient(135deg, #1877f2, #0c44ae);
+  box-shadow: 0 10px 18px rgba(24, 119, 242, 0.2);
+}
+
+.matrix-subbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.holder-view-controls {
+  display: flex;
+  align-items: center;
+}
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.inline-field select {
+  min-width: 132px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
 }
 
 .tag-group {
@@ -469,7 +535,7 @@ input {
 }
 
 .tag {
-  padding: 8px 12px;
+  padding: 7px 11px;
   border-radius: 999px;
   background: var(--primary-soft);
   color: var(--primary);
@@ -487,12 +553,12 @@ input {
 .pivot-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
+  min-width: 780px;
 }
 
 .pivot-table th,
 .pivot-table td {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line);
   text-align: center;
   white-space: nowrap;
@@ -510,6 +576,7 @@ input {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .table-sort--active {
@@ -544,7 +611,7 @@ input {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  min-width: 148px;
+  min-width: 128px;
 }
 
 .bay-cell__head {
@@ -555,7 +622,7 @@ input {
 }
 
 .bay-cell__title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -573,9 +640,9 @@ input {
 }
 
 .warning-pill {
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -616,7 +683,7 @@ input {
   z-index: 1;
   width: min(420px, calc(100vw - 32px));
   margin: 10vh auto 0;
-  padding: 24px;
+  padding: 20px;
   border-radius: var(--radius-xl);
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -665,19 +732,15 @@ input {
   .app-shell {
     grid-template-columns: 1fr;
   }
-
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 16px;
+    padding: 14px;
   }
 
   .home-view {
-    padding: 20px 16px 32px;
+    padding: 16px 14px 24px;
   }
 
   .voyage-grid {
@@ -688,7 +751,18 @@ input {
     flex-direction: column;
   }
 
-  .summary-grid {
-    grid-template-columns: 1fr;
+  .panel__header,
+  .matrix-subbar,
+  .matrix-toolbar,
+  .matrix-actions,
+  .sheet-tabs {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .matrix-action-button,
+  .sheet-tab,
+  .inline-field {
+    width: 100%;
   }
 }

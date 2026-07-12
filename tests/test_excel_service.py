@@ -173,6 +173,27 @@ class ExcelServiceTests(unittest.TestCase):
         self.assertEqual(payload["rowCount"], 409)
         self.assertEqual(payload["summary"]["containers"], 409)
 
+    def test_payload_exposes_filtered_records_for_frontend_views(self) -> None:
+        payload = build_dashboard_payload(
+            records=self.sample["records"],
+            warnings=self.sample["warnings"],
+            session_name=self.sample["session_name"],
+            source_sheet=self.sample["source_sheet"],
+            active_holders=True,
+            active_decks=True,
+            active_heights=True,
+            active_sizes=True,
+            selected_holders={"ONE"},
+        )
+
+        self.assertEqual(payload["rowCount"], len(payload["records"]))
+        self.assertTrue(payload["records"])
+        sample_record = payload["records"][0]
+        self.assertIn("bay", sample_record)
+        self.assertIn("deck", sample_record)
+        self.assertIn("holder", sample_record)
+        self.assertIn("loadPort", sample_record)
+
     def test_parse_voyage_metadata_uses_manual_voyage_when_filename_has_no_underscore(self) -> None:
         metadata = parse_voyage_metadata("第一致敬.XLS", "031WJ")
         self.assertEqual(metadata["shipName"], "第一致敬")
