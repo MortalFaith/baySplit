@@ -122,11 +122,16 @@
     </section>
 
     <template id="voyage-card-template">
-      <button class="voyage-card" type="button">
-        <p class="eyebrow voyage-card__eyebrow"></p>
-        <h3 class="voyage-card__title"></h3>
-        <p class="voyage-card__meta"></p>
-      </button>
+      <article class="voyage-card" tabindex="0">
+        <div class="voyage-card__body">
+          <p class="eyebrow voyage-card__eyebrow"></p>
+          <h3 class="voyage-card__title"></h3>
+          <p class="voyage-card__meta"></p>
+        </div>
+        <div class="voyage-card__actions">
+          <button class="button button--ghost voyage-card__delete" type="button">删除</button>
+        </div>
+      </article>
     </template>
 
     <template id="filter-group-template">

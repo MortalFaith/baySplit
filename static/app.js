@@ -79,7 +79,7 @@ const closeSettingsButton = document.getElementById("close-settings");
 const saveSettingsButton = document.getElementById("save-settings");
 const movesPerHourInput = document.getElementById("moves-per-hour-input");
 
-homeUploadForm.addEventListener("submit", async (event) => {
+homeUploadForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const [file] = homeFileInput.files;
   if (!file) {
@@ -115,13 +115,13 @@ homeUploadForm.addEventListener("submit", async (event) => {
   homeFileInput.value = "";
 });
 
-backHomeButton.addEventListener("click", () => {
+backHomeButton?.addEventListener("click", () => {
   state.currentVoyageId = null;
   updateRoute();
   renderLayout();
 });
 
-resetFiltersButton.addEventListener("click", async () => {
+resetFiltersButton?.addEventListener("click", async () => {
   if (!state.data) {
     return;
   }
@@ -141,7 +141,7 @@ resetFiltersButton.addEventListener("click", async () => {
   await refreshDashboard();
 });
 
-createTicketButton.addEventListener("click", async () => {
+createTicketButton?.addEventListener("click", async () => {
   if (!state.currentVoyageId) {
     return;
   }
@@ -180,24 +180,24 @@ createTicketButton.addEventListener("click", async () => {
   await refreshDashboard();
 });
 
-toggleBayFilterButton.addEventListener("click", () => {
+toggleBayFilterButton?.addEventListener("click", () => {
   toggleBayFilter();
 });
 
-holderViewSelect.addEventListener("change", (event) => {
+holderViewSelect?.addEventListener("change", (event) => {
   state.holderViewHolder = event.target.value || null;
   state.sort = { key: null, direction: null };
   renderTable();
 });
 
-settingsButton.addEventListener("click", () => {
+settingsButton?.addEventListener("click", () => {
   movesPerHourInput.value = String(state.movesPerHour);
   settingsModal.classList.remove("hidden");
   settingsModal.setAttribute("aria-hidden", "false");
 });
 
-closeSettingsButton.addEventListener("click", closeSettingsModal);
-saveSettingsButton.addEventListener("click", () => {
+closeSettingsButton?.addEventListener("click", closeSettingsModal);
+saveSettingsButton?.addEventListener("click", () => {
   const value = Number(movesPerHourInput.value);
   if (!Number.isFinite(value) || value <= 0) {
     window.alert("每小时关数必须是大于 0 的数字。");
@@ -209,7 +209,7 @@ saveSettingsButton.addEventListener("click", () => {
   renderTable();
 });
 
-settingsModal.addEventListener("click", (event) => {
+settingsModal?.addEventListener("click", (event) => {
   if (event.target.dataset.closeModal === "true") {
     closeSettingsModal();
   }
@@ -344,6 +344,11 @@ function syncBayFilterState() {
 }
 
 function syncHolderViewState() {
+  if (!hasRecordViewData()) {
+    state.holderViewHolder = null;
+    return;
+  }
+
   const holders = getAvailableHolders(getDisplayedRecords({ applyBayFilter: false }));
   if (holders.length === 0) {
     state.holderViewHolder = null;
@@ -370,16 +375,51 @@ function renderLayout() {
 }
 
 function renderVoyageCards() {
+  if (!voyageList || !voyageCardTemplate) {
+    return;
+  }
+
   voyageList.innerHTML = "";
   state.voyages.forEach((voyage) => {
     const fragment = voyageCardTemplate.content.cloneNode(true);
     const card = fragment.querySelector(".voyage-card");
+    const deleteButton = fragment.querySelector(".voyage-card__delete");
     fragment.querySelector(".voyage-card__eyebrow").textContent = voyage.voyageName;
     fragment.querySelector(".voyage-card__title").textContent = voyage.shipName;
     fragment.querySelector(".voyage-card__meta").textContent =
       `${voyage.boxCount} 箱 · ${voyage.bayCount} 贝 · ${voyage.ticketCount} 票`;
-    card.addEventListener("click", async () => {
+
+    const openCard = async () => {
       await openVoyage(voyage.id);
+    };
+    card.addEventListener("click", openCard);
+    card.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        await openCard();
+      }
+    });
+    deleteButton?.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const confirmed = window.confirm(`确认删除航次“${voyage.displayName}”吗？已生成的分票也会一并删除。`);
+      if (!confirmed) {
+        return;
+      }
+
+      const response = await fetch(withRootPath(`/api/voyages/${voyage.id}`), { method: "DELETE" });
+      const payload = await readJson(response);
+      if (!response.ok) {
+        window.alert(payload.detail || "删除失败");
+        return;
+      }
+
+      if (state.currentVoyageId === voyage.id) {
+        state.currentVoyageId = null;
+        state.data = null;
+        updateRoute();
+        renderLayout();
+      }
+      await loadVoyages();
     });
     voyageList.appendChild(fragment);
   });
@@ -396,12 +436,19 @@ function renderVoyageView() {
 }
 
 function renderHero() {
+  if (!heroTitle || !sidebarTitle) {
+    return;
+  }
   const { voyage } = state.data;
   heroTitle.textContent = voyage.displayName;
   sidebarTitle.textContent = voyage.shipName;
 }
 
 function renderFilters() {
+  if (!filterPanel || !filterTemplate) {
+    return;
+  }
+
   const groups = [
     ["holders", "持箱人", "开启后按持箱人筛选和分类，关闭后全部视为一类。"],
     ["decks", "仓上 / 仓下", "开启后按仓位属性筛选，关闭后不区分仓上和仓下。"],
@@ -430,9 +477,6 @@ function renderFilters() {
           state.data.filters.defaults[key] || state.data.filters.available[key]
         );
       }
-      state.selectedBays.clear();
-      state.bayFilterEnabled = false;
-      state.holderViewHolder = null;
       await refreshDashboard();
     });
 
@@ -449,9 +493,6 @@ function renderFilters() {
         } else {
           state.selected[key].delete(value);
         }
-        state.selectedBays.clear();
-        state.bayFilterEnabled = false;
-        state.holderViewHolder = null;
         await refreshDashboard();
       });
       options.appendChild(chip);
@@ -462,6 +503,10 @@ function renderFilters() {
 }
 
 function renderTickets() {
+  if (!ticketList || !createTicketButton || !ticketItemTemplate) {
+    return;
+  }
+
   ticketList.innerHTML = "";
   createTicketButton.disabled = state.selectedBays.size === 0;
   createTicketButton.textContent =
@@ -485,16 +530,28 @@ function renderTickets() {
 }
 
 function renderTags() {
+  if (!baseFilterTags) {
+    return;
+  }
   baseFilterTags.innerHTML = Object.entries(state.data.meta.baseFilters)
     .map(([key, value]) => `<span class="tag">${key}: ${value}</span>`)
     .join("");
 }
 
 function renderMatrixChrome() {
-  const currentSheet = SHEETS.find((sheet) => sheet.key === state.activeSheet) || SHEETS[0];
+  if (!matrixDescription || !sheetTabs || !toggleBayFilterButton || !holderViewControls || !holderViewSelect) {
+    return;
+  }
+
+  const availableSheets = hasRecordViewData() ? SHEETS : [SHEETS[0]];
+  if (!availableSheets.some((sheet) => sheet.key === state.activeSheet)) {
+    state.activeSheet = "bay";
+  }
+
+  const currentSheet = availableSheets.find((sheet) => sheet.key === state.activeSheet) || SHEETS[0];
   matrixDescription.textContent = currentSheet.description;
 
-  sheetTabs.innerHTML = SHEETS.map(
+  sheetTabs.innerHTML = availableSheets.map(
     (sheet) => `
       <button
         type="button"
@@ -552,21 +609,29 @@ function renderMatrixChrome() {
 }
 
 function renderTable() {
-  if (!state.data) {
+  if (!state.data || !pivotTable) {
     return;
   }
 
-  if (state.activeSheet === "holderBay") {
-    renderHolderBayTable();
-    return;
-  }
+  try {
+    if (state.activeSheet === "holderBay") {
+      renderHolderBayTable();
+      return;
+    }
 
-  if (state.activeSheet === "holderLoadPort") {
-    renderHolderLoadPortTable();
-    return;
-  }
+    if (state.activeSheet === "holderLoadPort") {
+      renderHolderLoadPortTable();
+      return;
+    }
 
-  renderBayTable();
+    renderBayTable();
+  } catch (error) {
+    console.error("Pivot render failed, falling back to bay matrix.", error);
+    state.activeSheet = "bay";
+    state.sort = { key: null, direction: null };
+    renderMatrixChrome();
+    renderLegacyBayTable();
+  }
 }
 
 function renderBayTable() {
@@ -744,17 +809,6 @@ function renderHolderLoadPortTable() {
     return;
   }
 
-  const columns = [];
-  ports.forEach((port) => {
-    ["舱上", "舱下"].forEach((deck) => {
-      columns.push({
-        key: `${port}|${deck}`,
-        port,
-        deck,
-      });
-    });
-  });
-
   const warningMap = buildWarningMap();
   const counts = new Map();
   holderRecords.forEach((record) => {
@@ -762,68 +816,96 @@ function renderHolderLoadPortTable() {
     counts.set(key, (counts.get(key) || 0) + 1);
   });
 
-  const rows = sortRows(
+  const bayGroups = sortBayGroups(
     bays.map((bay) => {
-      const values = {};
-      columns.forEach((column) => {
-        values[column.key] = counts.get(`${bay}|${column.port}|${column.deck}`) || 0;
+      const deckRows = ["舱上", "舱下"].map((deck) => {
+        const values = {};
+        ports.forEach((port) => {
+          values[port] = counts.get(`${bay}|${port}|${deck}`) || 0;
+        });
+        return {
+          bay,
+          deck,
+          values,
+          total: Object.values(values).reduce((sum, value) => sum + value, 0),
+        };
       });
       return {
         bay,
-        sortValue: bay,
         warnings: warningMap[bay] || [],
-        values,
-        total: Object.values(values).reduce((sum, value) => sum + value, 0),
+        total: deckRows.reduce((sum, row) => sum + row.total, 0),
+        rows: deckRows,
       };
     })
   );
 
-  const allSelected = rows.length > 0 && rows.every((row) => state.selectedBays.has(row.bay));
-  const totalCells = columns.map(
-    (column) => `<td>${rows.reduce((sum, row) => sum + (row.values[column.key] || 0), 0)}</td>`
+  const allSelected =
+    bayGroups.length > 0 && bayGroups.every((group) => state.selectedBays.has(group.bay));
+  const totalCells = ports.map(
+    (port) =>
+      `<td>${bayGroups.reduce(
+        (sum, group) => sum + group.rows.reduce((deckSum, row) => deckSum + (row.values[port] || 0), 0),
+        0
+      )}</td>`
   );
 
-  const bodyRows = rows
-    .map((row) => {
-      const cells = columns.map((column) => `<td>${row.values[column.key] || ""}</td>`).join("");
-      return `
-        <tr data-bay-row="${row.bay}">
-          <td>
-            <input type="checkbox" data-bay-checkbox="${row.bay}" ${
-              state.selectedBays.has(row.bay) ? "checked" : ""
-            } />
-          </td>
-          <td class="row-label">${renderBayCell(row)}</td>
-          ${cells}
-          <td>${row.total}</td>
-        </tr>
-      `;
-    })
+  const bodyRows = bayGroups
+    .map((group) =>
+      group.rows
+        .map((row, index) => {
+          const cells = ports.map((port) => `<td>${row.values[port] || ""}</td>`).join("");
+          return `
+            <tr data-bay-row="${group.bay}">
+              ${
+                index === 0
+                  ? `
+                <td rowspan="${group.rows.length}">
+                  <input type="checkbox" data-bay-checkbox="${group.bay}" ${
+                    state.selectedBays.has(group.bay) ? "checked" : ""
+                  } />
+                </td>
+                <td rowspan="${group.rows.length}" class="row-label">${renderBayCell({
+                  bay: group.bay,
+                  warnings: group.warnings,
+                  total: group.total,
+                })}</td>
+              `
+                  : ""
+              }
+              <td class="deck-label">${row.deck}</td>
+              ${cells}
+              <td>${row.total}</td>
+            </tr>
+          `;
+        })
+        .join("")
+    )
     .join("");
 
   pivotTable.innerHTML = `
     <thead>
       <tr>
-        <th rowspan="2"><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
-        <th rowspan="2">${renderSortHeaderLabel("贝位", "primary")}</th>
-        ${ports.map((port) => `<th colspan="2">${escapeHtml(port)}</th>`).join("")}
-        <th rowspan="2">${renderSortHeaderLabel("总计", "total")}</th>
+        <th><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
+        <th>${renderSortHeaderLabel("贝位", "primary")}</th>
+        <th>仓位</th>
+        ${ports.map((port) => `<th>${escapeHtml(port)}</th>`).join("")}
+        <th>${renderSortHeaderLabel("总计", "total")}</th>
       </tr>
-      <tr>${columns.map((column) => `<th>${escapeHtml(column.deck)}</th>`).join("")}</tr>
     </thead>
     <tbody>
       ${bodyRows}
       <tr class="grand-total">
         <td></td>
         <td class="total-label">总计</td>
+        <td></td>
         ${totalCells.join("")}
-        <td>${rows.reduce((sum, row) => sum + row.total, 0)}</td>
+        <td>${bayGroups.reduce((sum, group) => sum + group.total, 0)}</td>
       </tr>
     </tbody>
   `;
 
   bindTableSortEvents();
-  bindBaySelectionEvents(rows);
+  bindBaySelectionEvents(bayGroups.map((group) => ({ bay: group.bay })));
 }
 
 function renderEmptyTable({ primaryLabel, selectable = false }) {
@@ -843,6 +925,88 @@ function renderEmptyTable({ primaryLabel, selectable = false }) {
       </tr>
     </tbody>
   `;
+}
+
+function renderLegacyBayTable() {
+  const columns = state.data?.matrix?.columns || [];
+  const rows = state.data?.matrix?.rows || [];
+
+  if (columns.length === 0 || rows.length === 0) {
+    renderEmptyTable({ primaryLabel: "贝位", selectable: true });
+    return;
+  }
+
+  const holderGroups = groupBy(columns, "holder");
+  const holderRow = holderGroups
+    .map(([holder, items]) => `<th colspan="${items.length}">${escapeHtml(holder)}</th>`)
+    .join("");
+  const deckRow = holderGroups
+    .map(([, items]) =>
+      groupBy(items, "deck")
+        .map(([deck, subItems]) => `<th colspan="${subItems.length}">${escapeHtml(deck)}</th>`)
+        .join("")
+    )
+    .join("");
+  const sizeRow = holderGroups
+    .map(([, items]) =>
+      groupBy(items, "deck")
+        .map(([, deckItems]) =>
+          groupBy(deckItems, "size")
+            .map(([size, subItems]) => `<th colspan="${subItems.length}">${escapeHtml(size)}</th>`)
+            .join("")
+        )
+        .join("")
+    )
+    .join("");
+  const heightRow = columns.map((column) => `<th>${escapeHtml(column.height)}</th>`).join("");
+  const allSelected = rows.length > 0 && rows.every((row) => state.selectedBays.has(row.bay));
+
+  const bodyRows = rows
+    .map((row) => {
+      const cells = columns.map((column) => `<td>${row.values[column.key] || ""}</td>`).join("");
+      return `
+        <tr data-bay-row="${row.bay}">
+          <td>
+            <input type="checkbox" data-bay-checkbox="${row.bay}" ${
+              state.selectedBays.has(row.bay) ? "checked" : ""
+            } />
+          </td>
+          <td class="row-label">${renderBayCell(row)}</td>
+          ${cells}
+          <td>${row.total}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const totals = state.data.matrix.totals || { values: {}, total: 0, bay: "总计" };
+  const totalCells = columns.map((column) => `<td>${totals.values[column.key] || ""}</td>`).join("");
+
+  pivotTable.innerHTML = `
+    <thead>
+      <tr>
+        <th rowspan="4"><input id="toggle-all-bays" type="checkbox" ${allSelected ? "checked" : ""} /></th>
+        <th rowspan="4">${renderSortHeaderLabel("贝位", "primary")}</th>
+        ${holderRow}
+        <th rowspan="4">${renderSortHeaderLabel("总计", "total")}</th>
+      </tr>
+      <tr>${deckRow}</tr>
+      <tr>${sizeRow}</tr>
+      <tr>${heightRow}</tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+      <tr class="grand-total">
+        <td></td>
+        <td class="total-label">${totals.bay || "总计"}</td>
+        ${totalCells}
+        <td>${totals.total || 0}</td>
+      </tr>
+    </tbody>
+  `;
+
+  bindTableSortEvents();
+  bindBaySelectionEvents(rows.map((row) => ({ bay: row.bay })));
 }
 
 function getBayMatrixRows() {
@@ -870,6 +1034,20 @@ function buildMatrixTotals(rows, columns) {
     values,
     total: Object.values(values).reduce((sum, value) => sum + value, 0),
   };
+}
+
+function sortBayGroups(groups) {
+  if (!state.sort.key || !state.sort.direction) {
+    return groups;
+  }
+
+  const direction = state.sort.direction === "desc" ? -1 : 1;
+  return [...groups].sort((left, right) => {
+    if (state.sort.key === "total") {
+      return (left.total - right.total) * direction;
+    }
+    return compareNatural(left.bay, right.bay) * direction;
+  });
 }
 
 function renderSortHeaderLabel(label, key) {
@@ -1070,11 +1248,15 @@ function closeSettingsModal() {
 }
 
 function getDisplayedRecords({ applyBayFilter = true } = {}) {
-  const records = state.data?.records || [];
+  const records = hasRecordViewData() ? state.data.records : [];
   if (!applyBayFilter || !state.bayFilterEnabled || state.selectedBays.size === 0) {
     return records;
   }
   return records.filter((record) => state.selectedBays.has(record.bay));
+}
+
+function hasRecordViewData() {
+  return Array.isArray(state.data?.records) && state.data.records.length > 0;
 }
 
 function getAvailableHolders(records) {

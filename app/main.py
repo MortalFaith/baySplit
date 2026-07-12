@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import os
 from pathlib import Path
+import shutil
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -25,7 +26,6 @@ STATIC_DIR = BASE_DIR / "static"
 SAMPLE_PATH = BASE_DIR / "example" / "第一致敬_新.XLS"
 TICKETS_DIR = BASE_DIR / "generated_tickets"
 TICKETS_DIR.mkdir(exist_ok=True)
-INDEX_HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 ROOT_PATH = os.getenv("ROOT_PATH", "").rstrip("/")
 
 app = FastAPI(title="Bay Split Dashboard", root_path=ROOT_PATH)
@@ -51,7 +51,7 @@ class TicketRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     root_path = ROOT_PATH or request.scope.get("root_path", "").rstrip("/")
-    html = INDEX_HTML.replace("__ROOT_PATH__", root_path)
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace("__ROOT_PATH__", root_path)
     return HTMLResponse(html)
 
 
@@ -164,6 +164,20 @@ def create_ticket(voyage_id: str, request: TicketRequest) -> dict:
     }
     voyage["tickets"].append(ticket)
     return {"ticket": _serialize_ticket(ticket, voyage_id)}
+
+
+@app.delete("/api/voyages/{voyage_id}")
+def delete_voyage(voyage_id: str) -> dict:
+    voyage = _get_voyage(voyage_id)
+    voyage_ticket_dir = TICKETS_DIR / voyage_id
+    if voyage_ticket_dir.exists():
+        resolved_dir = voyage_ticket_dir.resolve()
+        if TICKETS_DIR.resolve() not in resolved_dir.parents:
+            raise HTTPException(status_code=400, detail="分票目录异常，无法删除")
+        shutil.rmtree(resolved_dir)
+
+    del voyages[voyage_id]
+    return {"deleted": True}
 
 
 @app.get("/api/voyages/{voyage_id}/tickets/{ticket_id}/download")
