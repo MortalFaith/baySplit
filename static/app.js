@@ -18,6 +18,11 @@ const state = {
     sizes: new Set(),
   },
 };
+const ROOT_PATH = (window.__ROOT_PATH__ || "").replace(/\/$/, "");
+
+function withRootPath(path) {
+  return `${ROOT_PATH}${path}`;
+}
 
 const homeView = document.getElementById("home-view");
 const voyageView = document.getElementById("voyage-view");
@@ -69,7 +74,7 @@ homeUploadForm.addEventListener("submit", async (event) => {
     formData.append("voyage_name", voyageName.trim());
   }
 
-  const response = await fetch("/api/voyages", { method: "POST", body: formData });
+  const response = await fetch(withRootPath("/api/voyages"), { method: "POST", body: formData });
   const payload = await readJson(response);
   if (!response.ok) {
     window.alert(payload.detail || "导入失败");
@@ -114,7 +119,7 @@ createTicketButton.addEventListener("click", async () => {
     return;
   }
 
-  const response = await fetch(`/api/voyages/${state.currentVoyageId}/tickets`, {
+  const response = await fetch(withRootPath(`/api/voyages/${state.currentVoyageId}/tickets`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -187,7 +192,7 @@ async function init() {
 }
 
 async function loadVoyages() {
-  const response = await fetch("/api/voyages");
+  const response = await fetch(withRootPath("/api/voyages"));
   const payload = await readJson(response);
   state.voyages = payload.voyages || [];
   renderVoyageCards();
@@ -235,7 +240,9 @@ async function refreshDashboard(initialize = false) {
     [...state.selected[group]].forEach((value) => params.append(group, value));
   });
 
-  const response = await fetch(`/api/voyages/${state.currentVoyageId}/dashboard?${params.toString()}`);
+  const response = await fetch(
+    withRootPath(`/api/voyages/${state.currentVoyageId}/dashboard?${params.toString()}`)
+  );
   state.data = await readJson(response);
   if (initialize) {
     syncInitialFilters();
@@ -411,7 +418,7 @@ function renderTickets() {
     fragment.querySelector(".ticket-item__meta").textContent =
       `${ticket.boxCount} 箱 · ${ticket.bayCount} 贝 · ${ticket.createdAt}`;
     const link = fragment.querySelector(".ticket-item__link");
-    link.href = ticket.downloadUrl;
+    link.href = withRootPath(ticket.downloadUrl);
     link.textContent = "下载";
     ticketList.appendChild(fragment);
   });

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -24,8 +25,10 @@ STATIC_DIR = BASE_DIR / "static"
 SAMPLE_PATH = BASE_DIR / "example" / "第一致敬_新.XLS"
 TICKETS_DIR = BASE_DIR / "generated_tickets"
 TICKETS_DIR.mkdir(exist_ok=True)
+INDEX_HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+ROOT_PATH = os.getenv("ROOT_PATH", "").rstrip("/")
 
-app = FastAPI(title="Bay Split Dashboard")
+app = FastAPI(title="Bay Split Dashboard", root_path=ROOT_PATH)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 voyages: dict[str, dict] = {}
@@ -43,9 +46,11 @@ class TicketRequest(BaseModel):
     selected_bays: list[str] = []
 
 
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+@app.get("/", response_class=HTMLResponse)
+def index(request: Request) -> HTMLResponse:
+    root_path = request.scope.get("root_path", "").rstrip("/")
+    html = INDEX_HTML.replace("__ROOT_PATH__", root_path)
+    return HTMLResponse(html)
 
 
 @app.get("/api/voyages")

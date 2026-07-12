@@ -131,8 +131,18 @@ class ExcelServiceTests(unittest.TestCase):
         workbook = load_workbook(output)
         sheet = workbook.active
         self.assertEqual(sheet["A1"].value, "箱号")
+        self.assertEqual(sheet["D1"].value, "箱型")
+        self.assertEqual(sheet["J1"].value, "卸货港")
         self.assertEqual(sheet["A2"].value, record.box_no)
-        self.assertEqual(sheet["C2"].value, record.bay)
+        self.assertEqual(sheet["B2"].value, record.ship_slot)
+        self.assertEqual(sheet["C2"].value, record.size)
+        self.assertEqual(sheet["D2"].value, record.box_type)
+        self.assertEqual(sheet["E2"].value, record.height)
+        self.assertEqual(sheet["F2"].value, record.weight)
+        self.assertEqual(sheet["G2"].value, record.status)
+        self.assertEqual(sheet["H2"].value, record.holder)
+        self.assertEqual(sheet["I2"].value, record.load_port)
+        self.assertEqual(sheet["J2"].value, record.discharge_port)
         workbook.close()
 
 

@@ -20,7 +20,12 @@ class ContainerRecord:
     ship_slot: str
     bay: str
     deck: str
+    box_type: str
     holder: str
+    weight: str
+    status: str
+    load_port: str
+    discharge_port: str
     size: str
     height: str
 
@@ -163,7 +168,18 @@ def _load_filtered_records(sheet: xlrd.sheet.Sheet) -> list[ContainerRecord]:
     headers = [_cell_to_text(sheet.cell_value(0, column)) for column in range(sheet.ncols)]
     column_map = {header: index for index, header in enumerate(headers)}
 
-    required_columns = ("箱号", "船箱位", "尺寸", "箱型", "箱高", "箱状态", "持箱人")
+    required_columns = (
+        "箱号",
+        "船箱位",
+        "尺寸",
+        "箱型",
+        "箱高",
+        "箱重",
+        "箱状态",
+        "持箱人",
+        "装货港",
+        "卸货港",
+    )
     missing = [column for column in required_columns if column not in column_map]
     if missing:
         raise ValueError(f"缺少必要列: {', '.join(missing)}")
@@ -185,7 +201,12 @@ def _load_filtered_records(sheet: xlrd.sheet.Sheet) -> list[ContainerRecord]:
                 ship_slot=ship_slot,
                 bay=derive_bay(ship_slot),
                 deck=derive_deck(ship_slot),
+                box_type=_cell_to_text(sheet.cell_value(row_index, column_map["箱型"])) or "未知",
                 holder=_cell_to_text(sheet.cell_value(row_index, column_map["持箱人"])) or "未知",
+                weight=_cell_to_text(sheet.cell_value(row_index, column_map["箱重"])),
+                status=box_status,
+                load_port=_cell_to_text(sheet.cell_value(row_index, column_map["装货港"])),
+                discharge_port=_cell_to_text(sheet.cell_value(row_index, column_map["卸货港"])),
                 size=_cell_to_text(sheet.cell_value(row_index, column_map["尺寸"])) or "未知",
                 height=_cell_to_text(sheet.cell_value(row_index, column_map["箱高"])) or "未知",
             )
@@ -407,18 +428,21 @@ def export_split_ticket(path: Path, records: list[ContainerRecord], ship_name: s
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "箱号清单"
-    worksheet.append(["箱号", "船箱位", "BAY", "仓上/仓下", "持箱人", "尺寸", "箱高"])
+    worksheet.append(["箱号", "船箱位", "尺寸", "箱型", "箱高", "箱重", "箱状态", "持箱人", "装货港", "卸货港"])
 
     for record in records:
         worksheet.append(
             [
                 record.box_no,
                 record.ship_slot,
-                record.bay,
-                record.deck,
-                record.holder,
                 record.size,
+                record.box_type,
                 record.height,
+                record.weight,
+                record.status,
+                record.holder,
+                record.load_port,
+                record.discharge_port,
             ]
         )
 
