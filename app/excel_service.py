@@ -482,16 +482,20 @@ def parse_voyage_metadata(filename: str, manual_voyage_name: str | None = None) 
     }
 
 
-def export_split_ticket(path: Path, records: list[ContainerRecord], ship_name: str, holder_label: str) -> None:
+def export_split_ticket(path: Path, records: list[ContainerRecord], voyage_label: str, holder_label: str) -> None:
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "箱号清单"
-    worksheet.append(["箱号", "船箱位", "尺寸", "箱型", "箱高", "箱重", "箱状态", "持箱人", "装货港", "卸货港"])
+    worksheet.append(
+        ["箱号", "贝位", "仓上/仓下", "船箱位", "尺寸", "箱型", "箱高", "箱重", "箱状态", "持箱人", "装货港", "卸货港"]
+    )
 
     for record in records:
         worksheet.append(
             [
                 record.box_no,
+                record.bay,
+                record.deck,
                 record.ship_slot,
                 record.size,
                 record.box_type,
@@ -504,5 +508,5 @@ def export_split_ticket(path: Path, records: list[ContainerRecord], ship_name: s
             ]
         )
 
-    workbook.properties.title = f"拆仓单箱号清单_{holder_label}_{ship_name}"
+    workbook.properties.title = f"拆仓单箱号清单_{holder_label}_{voyage_label}"
     workbook.save(path)

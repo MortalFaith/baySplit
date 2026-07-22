@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import shutil
+import time
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -12,26 +15,26 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.excel_service import (
+    BayWarning,
+    ContainerRecord,
     analyze_workbook,
     build_dashboard_payload,
     export_split_ticket,
     filter_records,
-    load_sample_workbook,
     parse_voyage_metadata,
 )
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
-SAMPLE_PATH = BASE_DIR / "example" / "第一致敬_新.XLS"
 TICKETS_DIR = BASE_DIR / "generated_tickets"
+VOYAGES_DIR = BASE_DIR / "stored_voyages"
 TICKETS_DIR.mkdir(exist_ok=True)
+VOYAGES_DIR.mkdir(exist_ok=True)
 ROOT_PATH = os.getenv("ROOT_PATH", "").rstrip("/")
 
 app = FastAPI(title="Bay Split Dashboard", root_path=ROOT_PATH)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-voyages: dict[str, dict] = {}
 
 
 class TicketRequest(BaseModel):
@@ -57,8 +60,7 @@ def index(request: Request) -> HTMLResponse:
 
 @app.get("/api/voyages")
 def list_voyages() -> dict:
-    _ensure_sample_voyage()
-    return {"voyages": [_serialize_voyage_summary(voyage) for voyage in voyages.values()]}
+    return {"voyages": [_serialize_voyage_summary(voyage) for voyage in _list_voyages()]}
 
 
 @app.post("/api/voyages")
@@ -144,12 +146,12 @@ def create_ticket(voyage_id: str, request: TicketRequest) -> dict:
 
     holders = sorted({record.holder for record in selected_records})
     holder_label = holders[0] if len(holders) == 1 else "多持箱人"
-    ticket_stem = f"拆仓单箱号清单_{holder_label}_{voyage['ship_name']}"
+    ticket_stem = f"拆仓单箱号清单_{holder_label}_{_safe_file_label(voyage['display_name'])}"
     voyage_ticket_dir = TICKETS_DIR / voyage_id
     voyage_ticket_dir.mkdir(exist_ok=True)
     ticket_path = _next_ticket_path(voyage_ticket_dir, ticket_stem)
 
-    export_split_ticket(ticket_path, selected_records, voyage["ship_name"], holder_label)
+    export_split_ticket(ticket_path, selected_records, voyage["display_name"], holder_label)
 
     ticket = {
         "id": uuid4().hex,
@@ -163,6 +165,7 @@ def create_ticket(voyage_id: str, request: TicketRequest) -> dict:
         "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     voyage["tickets"].append(ticket)
+    _save_voyage(voyage)
     return {"ticket": _serialize_ticket(ticket, voyage_id)}
 
 
@@ -171,12 +174,10 @@ def delete_voyage(voyage_id: str) -> dict:
     voyage = _get_voyage(voyage_id)
     voyage_ticket_dir = TICKETS_DIR / voyage_id
     if voyage_ticket_dir.exists():
-        resolved_dir = voyage_ticket_dir.resolve()
-        if TICKETS_DIR.resolve() not in resolved_dir.parents:
-            raise HTTPException(status_code=400, detail="分票目录异常，无法删除")
-        shutil.rmtree(resolved_dir)
+        _remove_directory(voyage_ticket_dir, TICKETS_DIR, "分票目录异常，无法删除")
 
-    del voyages[voyage_id]
+    voyage["deleted_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _save_voyage(voyage)
     return {"deleted": True}
 
 
@@ -197,7 +198,7 @@ def _store_voyage(file_bytes: bytes, filename: str, manual_voyage_name: str | No
     voyage_data = analyze_workbook(file_bytes, filename)
     voyage_meta = parse_voyage_metadata(filename, manual_voyage_name)
     voyage_id = uuid4().hex
-    voyages[voyage_id] = {
+    voyage = {
         "id": voyage_id,
         "session_name": voyage_data["session_name"],
         "source_sheet": voyage_data["source_sheet"],
@@ -207,36 +208,19 @@ def _store_voyage(file_bytes: bytes, filename: str, manual_voyage_name: str | No
         "voyage_name": voyage_meta["voyageName"],
         "display_name": voyage_meta["displayName"],
         "filename": filename,
+        "imported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "tickets": [],
     }
+    _save_voyage(voyage)
     return voyage_id
 
 
-def _ensure_sample_voyage() -> None:
-    if any(voyage["filename"] == SAMPLE_PATH.name for voyage in voyages.values()):
-        return
-
-    voyage_data = load_sample_workbook(SAMPLE_PATH)
-    voyage_meta = parse_voyage_metadata(SAMPLE_PATH.name)
-    voyage_id = uuid4().hex
-    voyages[voyage_id] = {
-        "id": voyage_id,
-        "session_name": voyage_data["session_name"],
-        "source_sheet": voyage_data["source_sheet"],
-        "records": voyage_data["records"],
-        "warnings": voyage_data["warnings"],
-        "ship_name": voyage_meta["shipName"],
-        "voyage_name": voyage_meta["voyageName"],
-        "display_name": voyage_meta["displayName"],
-        "filename": SAMPLE_PATH.name,
-        "tickets": [],
-    }
-
-
 def _get_voyage(voyage_id: str) -> dict:
-    _ensure_sample_voyage()
-    voyage = voyages.get(voyage_id)
-    if voyage is None:
+    voyage_path = _voyage_file(voyage_id)
+    if not voyage_path.exists():
+        raise HTTPException(status_code=404, detail="未找到对应航次")
+    voyage = _load_voyage(voyage_path)
+    if voyage.get("deleted_at"):
         raise HTTPException(status_code=404, detail="未找到对应航次")
     return voyage
 
@@ -278,3 +262,74 @@ def _next_ticket_path(directory: Path, stem: str) -> Path:
         if not candidate.exists():
             return candidate
         index += 1
+
+
+def _voyage_dir(voyage_id: str) -> Path:
+    return VOYAGES_DIR / voyage_id
+
+
+def _voyage_file(voyage_id: str) -> Path:
+    return _voyage_dir(voyage_id) / "voyage.json"
+
+
+def _save_voyage(voyage: dict) -> None:
+    voyage_dir = _voyage_dir(voyage["id"])
+    voyage_dir.mkdir(parents=True, exist_ok=True)
+    _voyage_file(voyage["id"]).write_text(
+        json.dumps(_serialize_voyage_for_storage(voyage), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_voyage(path: Path) -> dict:
+    return _deserialize_voyage(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _list_voyages() -> list[dict]:
+    voyages = [
+        voyage
+        for path in VOYAGES_DIR.glob("*/voyage.json")
+        if not (voyage := _load_voyage(path)).get("deleted_at")
+    ]
+    return sorted(voyages, key=lambda voyage: (voyage.get("imported_at") or "", voyage["id"]), reverse=True)
+
+
+def _serialize_voyage_for_storage(voyage: dict) -> dict:
+    return {
+        **voyage,
+        "records": [asdict(record) for record in voyage["records"]],
+        "warnings": {bay: asdict(warning) for bay, warning in voyage["warnings"].items()},
+    }
+
+
+def _deserialize_voyage(payload: dict) -> dict:
+    return {
+        **payload,
+        "records": [ContainerRecord(**record) for record in payload.get("records", [])],
+        "warnings": {
+            bay: BayWarning(**warning)
+            for bay, warning in (payload.get("warnings") or {}).items()
+        },
+        "tickets": payload.get("tickets", []),
+    }
+
+
+def _safe_file_label(value: str) -> str:
+    return "".join("_" if char in '<>:"/\\|?*' else char for char in value).strip() or "未命名航次"
+
+
+def _remove_directory(path: Path, expected_root: Path, error_detail: str) -> None:
+    resolved_dir = path.resolve()
+    if expected_root.resolve() not in resolved_dir.parents:
+        raise HTTPException(status_code=400, detail=error_detail)
+
+    for _ in range(3):
+        if not resolved_dir.exists():
+            return
+        shutil.rmtree(resolved_dir, ignore_errors=True)
+        if not resolved_dir.exists():
+            return
+        time.sleep(0.05)
+
+    raise HTTPException(status_code=400, detail=error_detail)
+

@@ -110,9 +110,19 @@ homeUploadForm?.addEventListener("submit", async (event) => {
     return;
   }
 
-  await loadVoyages();
-  await openVoyage(payload.voyageId);
   homeFileInput.value = "";
+  try {
+    await openVoyage(payload.voyageId);
+  } catch (error) {
+    console.error("Failed to open imported voyage.", error);
+    window.alert("导入成功，但打开详情失败，请刷新后重试。");
+  }
+
+  try {
+    await loadVoyages();
+  } catch (error) {
+    console.error("Failed to refresh voyage list after import.", error);
+  }
 });
 
 backHomeButton?.addEventListener("click", () => {
@@ -239,12 +249,18 @@ async function init() {
 async function loadVoyages() {
   const response = await fetch(withRootPath("/api/voyages"));
   const payload = await readJson(response);
+  if (!response.ok) {
+    throw new Error(payload.detail || "航次列表加载失败");
+  }
   state.voyages = payload.voyages || [];
   renderVoyageCards();
 }
 
 async function openVoyage(voyageId) {
+  const previousVoyageId = state.currentVoyageId;
+  const previousData = state.data;
   state.currentVoyageId = voyageId;
+  state.data = null;
   updateRoute();
   state.activeSheet = "bay";
   state.bayFilterEnabled = false;
@@ -265,8 +281,16 @@ async function openVoyage(voyageId) {
     sizes: new Set(),
     statuses: new Set(),
   };
-  await refreshDashboard(true);
-  renderLayout();
+  try {
+    await refreshDashboard(true);
+    renderLayout();
+  } catch (error) {
+    state.currentVoyageId = previousVoyageId;
+    state.data = previousData;
+    updateRoute();
+    renderLayout();
+    throw error;
+  }
 }
 
 async function refreshDashboard(initialize = false) {
@@ -294,7 +318,11 @@ async function refreshDashboard(initialize = false) {
   const response = await fetch(
     withRootPath(`/api/voyages/${state.currentVoyageId}/dashboard?${params.toString()}`)
   );
-  state.data = await readJson(response);
+  const payload = await readJson(response);
+  if (!response.ok) {
+    throw new Error(payload.detail || "航次详情加载失败");
+  }
+  state.data = payload;
   if (initialize) {
     syncInitialFilters();
   } else {

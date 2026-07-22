@@ -51,3 +51,4 @@ Thumbs.db
 
 *.bundle
 material-kit-react-main/
+tests/
